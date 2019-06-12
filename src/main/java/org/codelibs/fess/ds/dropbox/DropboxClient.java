@@ -17,6 +17,7 @@ package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
+import com.dropbox.core.v1.DbxEntry;
 import com.dropbox.core.v2.DbxTeamClientV2;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 import org.codelibs.core.lang.StringUtil;
@@ -24,6 +25,7 @@ import org.codelibs.fess.exception.DataStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -31,6 +33,8 @@ public class DropboxClient {
 
     private static final Logger logger = LoggerFactory.getLogger(DropboxClient.class);
 
+    protected static final String APP_KEY = "app_key";
+    protected static final String APP_SECRET = "app_secret";
     protected static final String ACCESS_TOKEN = "access_token";
 
     protected DbxRequestConfig config;
@@ -55,4 +59,10 @@ public class DropboxClient {
 
     // TODO get files, download file
 
+    public Map getList(){
+        final Map<String,String> fileList=new HashMap<>();
+        //DbxEntry.WithChildren listing =
+
+        return fileList;
+    }
 }
