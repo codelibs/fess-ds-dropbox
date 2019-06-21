@@ -15,24 +15,41 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.codelibs.fess.app.service.FailureUrlService;
-import org.codelibs.fess.crawler.exception.CrawlingAccessException;
-import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
+import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.Metadata;
+import org.codelibs.core.lang.StringUtil;
+import org.codelibs.core.stream.StreamUtil;
+import org.codelibs.fess.Constants;
+import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
-import org.codelibs.fess.exception.DataStoreCrawlingException;
-import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
+import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 public class DropboxDataStore extends AbstractDataStore {
+
     private static final Logger logger = LoggerFactory.getLogger(DropboxDataStore.class);
+
+    protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
+
+    // parameters
+    protected static final String FIELDS = "fields";
+    protected static final String MAX_SIZE = "max_size";
+    protected static final String IGNORE_FOLDER = "ignore_folder";
+    protected static final String IGNORE_ERROR = "ignore_error";
+    protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
+    protected static final String INCLUDE_PATTERN = "include_pattern";
+    protected static final String EXCLUDE_PATTERN = "exclude_pattern";
+    protected static final String NUMBER_OF_THREADS = "number_of_threads";
 
     protected String getName() {
         return "Dropbox";
@@ -41,66 +58,124 @@ public class DropboxDataStore extends AbstractDataStore {
     @Override
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
-        final FessConfig fessConfig = ComponentUtil.getFessConfig();
+        final Config config = new Config(paramMap);
+        if (logger.isDebugEnabled()) {
+            logger.debug("config: {}", config);
+        }
+        final ExecutorService executorService =
+                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
 
-        final long readInterval = getReadInterval(paramMap);
-        final int dataSize = paramMap.get("data.size") != null ? Integer.parseInt(paramMap.get("data.size")) : 10;
-        boolean running = true;
-        for (int i = 0; i < dataSize && running; i++) {
-            final Map<String, Object> dataMap = new HashMap<>();
-            try {
-                dataMap.put(fessConfig.getIndexFieldUrl(), "http://fess.codelibs.org/?sample=" + i);
-                dataMap.put(fessConfig.getIndexFieldHost(), "fess.codelibs.org");
-                dataMap.put(fessConfig.getIndexFieldSite(), "fess.codelibs.org/" + i);
-                dataMap.put(fessConfig.getIndexFieldTitle(), "Sample " + i);
-                dataMap.put(fessConfig.getIndexFieldContent(), "Sample Test" + i);
-                dataMap.put(fessConfig.getIndexFieldDigest(), "Sample Data" + i);
-                dataMap.put(fessConfig.getIndexFieldAnchor(), "http://fess.codelibs.org/?from=" + i);
-                dataMap.put(fessConfig.getIndexFieldContentLength(), i * 100L);
-                dataMap.put(fessConfig.getIndexFieldLastModified(), new Date());
-                callback.store(paramMap, dataMap);
-            } catch (final CrawlingAccessException e) {
-                logger.warn("Crawling Access Exception at : " + dataMap, e);
-
-                Throwable target = e;
-                if (target instanceof MultipleCrawlingAccessException) {
-                    final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
-                    if (causes.length > 0) {
-                        target = causes[causes.length - 1];
-                    }
-                }
-
-                String errorName;
-                final Throwable cause = target.getCause();
-                if (cause != null) {
-                    errorName = cause.getClass().getCanonicalName();
-                } else {
-                    errorName = target.getClass().getCanonicalName();
-                }
-
-                String url;
-                if (target instanceof DataStoreCrawlingException) {
-                    final DataStoreCrawlingException dce = (DataStoreCrawlingException) target;
-                    url = dce.getUrl();
-                    if (dce.aborted()) {
-                        running = false;
-                    }
-                } else {
-                    url = "line:" + i;
-                }
-                final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
-                failureUrlService.store(dataConfig, errorName, url, target);
-            } catch (final Throwable t) {
-                logger.warn("Crawling Access Exception at : " + dataMap, t);
-                final String url = "line:" + i;
-                final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
-                failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), url, t);
-
-                if (readInterval > 0) {
-                    sleep(readInterval);
-                }
-
+        try {
+            final DropboxClient client = createClient(paramMap);
+            crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client);
+            executorService.awaitTermination(60, TimeUnit.SECONDS);
+        } catch (final InterruptedException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Interrupted.", e);
             }
+        } finally {
+            executorService.shutdown();
         }
     }
+
+    protected void crawlMemberFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
+            final ExecutorService executorService, final DropboxClient client) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Crawling member files.");
+        }
+        try {
+            client.getMembers(member -> {
+                // client.getMemberFiles(member.getProfile().getAccountId(), metadata -> executorService
+                //         .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, metadata)));
+            });
+        } catch (final DbxException e) {
+            logger.debug("Failed to crawl member files.", e);
+        }
+    }
+
+    protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
+            final Metadata metadata) {
+    }
+
+    protected DropboxClient createClient(final Map<String, String> paramMap) {
+        return new DropboxClient(paramMap);
+    }
+
+    protected static class Config {
+        final String[] fields;
+        final long maxSize;
+        final boolean ignoreFolder, ignoreError;
+        final String[] supportedMimeTypes;
+        final UrlFilter urlFilter;
+
+        Config(final Map<String, String> paramMap) {
+            fields = getFields(paramMap);
+            maxSize = getMaxSize(paramMap);
+            ignoreFolder = isIgnoreFolder(paramMap);
+            ignoreError = isIgnoreError(paramMap);
+            supportedMimeTypes = getSupportedMimeTypes(paramMap);
+            urlFilter = getUrlFilter(paramMap);
+        }
+
+        private String[] getFields(final Map<String, String> paramMap) {
+            final String value = paramMap.get(FIELDS);
+            if (value != null) {
+                return StreamUtil.split(value, ",").get(stream -> stream.map(String::trim).toArray(String[]::new));
+            }
+            return null;
+        }
+
+        private long getMaxSize(final Map<String, String> paramMap) {
+            final String value = paramMap.get(MAX_SIZE);
+            try {
+                return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
+            } catch (final NumberFormatException e) {
+                return DEFAULT_MAX_SIZE;
+            }
+        }
+
+        private boolean isIgnoreFolder(final Map<String, String> paramMap) {
+            return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        }
+
+        private boolean isIgnoreError(final Map<String, String> paramMap) {
+            return paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+        }
+
+        private String[] getSupportedMimeTypes(final Map<String, String> paramMap) {
+            return StreamUtil.split(paramMap.getOrDefault(SUPPORTED_MIMETYPES, ".*"), ",")
+                    .get(stream -> stream.map(String::trim).toArray(String[]::new));
+        }
+
+        private UrlFilter getUrlFilter(final Map<String, String> paramMap) {
+            final UrlFilter urlFilter;
+            try {
+                urlFilter = ComponentUtil.getComponent(UrlFilter.class);
+            } catch (final ComponentNotFoundException e) {
+                return null;
+            }
+            final String include = paramMap.get(INCLUDE_PATTERN);
+            if (StringUtil.isNotBlank(include)) {
+                urlFilter.addInclude(include);
+            }
+            final String exclude = paramMap.get(EXCLUDE_PATTERN);
+            if (StringUtil.isNotBlank(exclude)) {
+                urlFilter.addExclude(exclude);
+            }
+            urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
+            if (logger.isDebugEnabled()) {
+                logger.debug("urlFilter: {}", urlFilter);
+            }
+            return urlFilter;
+        }
+
+        @Override
+        public String toString() {
+            return "{fields=" + Arrays.toString(fields) + ",maxSize=" + maxSize + ",ignoreError=" + ignoreError + ",ignoreFolder="
+                    + ignoreFolder + ",supportedMimeTypes=" + Arrays.toString(supportedMimeTypes) + ",urlFilter=" + urlFilter + "}";
+        }
+    }
+
 }
