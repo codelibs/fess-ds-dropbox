@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
 import com.dropbox.core.v2.DbxTeamClientV2;
@@ -84,10 +85,14 @@ public class DropboxClient {
         }
     }
 
-    public InputStream getFileInputStream(final String memberId, final FileMetadata file) {
+    public DbxDownloader<FileMetadata> getFileDownloader(final String memberId, final FileMetadata file) throws DbxException {
+        return client.asMember(memberId).files().download(file.getPathDisplay());
+    }
+
+    public InputStream getFileInputStream(final DbxDownloader<FileMetadata> downloader, final FileMetadata file) {
         try (final DeferredFileOutputStream dfos = new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out",
                 SystemUtils.getJavaIoTmpDir())) {
-            client.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
+            downloader.download(dfos);
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());
