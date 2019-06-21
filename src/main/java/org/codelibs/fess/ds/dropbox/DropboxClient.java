@@ -17,13 +17,20 @@ package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
+import com.dropbox.core.v1.DbxEntry;
+import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.DbxTeamClientV2;
+import com.dropbox.core.v2.files.ListFolderResult;
+import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.exception.DataStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -31,7 +38,10 @@ public class DropboxClient {
 
     private static final Logger logger = LoggerFactory.getLogger(DropboxClient.class);
 
+    protected static final String APP_KEY = "app_key";
+    protected static final String APP_SECRET = "app_secret";
     protected static final String ACCESS_TOKEN = "access_token";
+    String downloadPath = "";
 
     protected DbxRequestConfig config;
     protected DbxTeamClientV2 client;
@@ -55,4 +65,31 @@ public class DropboxClient {
 
     // TODO get files, download file
 
+    public List getFiles() throws DbxException {
+        List<String> fileList = new LinkedList<>();
+        Map<String, String> fileMap = getMetadata();
+        for (String name : fileMap.values()) {
+            fileList.add(name);
+        }
+        return fileList;
+    }
+
+    private Map getMetadata() throws DbxException {
+        final Map<String, String> fileMap = new HashMap<>();
+        DbxClientV2 clientV2 = new DbxClientV2(config, ACCESS_TOKEN);
+        ListFolderResult listFolderResult = clientV2.files().listFolder("");
+        while (true) {
+            for (Metadata metadata : listFolderResult.getEntries()) {
+                fileMap.put(metadata.getPathLower(), metadata.getName());
+            }
+            if (!listFolderResult.getHasMore()) break;
+            listFolderResult = clientV2.files().listFolderContinue(listFolderResult.getCursor());
+        }
+        return fileMap;
+    }
+
+    public void downloadFiles() throws DbxException {
+        DbxClientV2 clientV2 = new DbxClientV2(config, ACCESS_TOKEN);
+        clientV2.files().download(downloadPath);
+    }
 }

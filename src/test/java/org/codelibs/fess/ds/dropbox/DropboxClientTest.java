@@ -56,4 +56,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         client.getMembers(info -> System.out.println(info.getProfile().getName().getDisplayName()));
     }
 
+    private void getMetadata(){
+
+    }
 }
