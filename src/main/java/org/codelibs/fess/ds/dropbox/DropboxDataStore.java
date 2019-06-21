@@ -20,6 +20,7 @@ import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.Metadata;
+import org.apache.http.client.utils.URIBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
@@ -39,6 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -153,7 +155,7 @@ public class DropboxDataStore extends AbstractDataStore {
             final String memberId, final Metadata metadata) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
-            final String url = getUrl(client, metadata);
+            final String url = getUrl(memberId, metadata);
 
             final UrlFilter urlFilter = config.urlFilter;
             if (urlFilter != null && !urlFilter.match(url)) {
@@ -196,7 +198,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_PROPERTY_GROUPS, file.getPropertyGroups()); // List<PropertyGroup>
                 fileMap.put(FILE_SHARING_INFO, file.getSharingInfo()); // FileSharingInfo
 
-                fileMap.put(FILE_CONTENTS, getFileContents(client, downloader, file, mimeType, config.ignoreError));
+                fileMap.put(FILE_CONTENTS, getFileContents(client, downloader, file, mimeType, url, config.ignoreError));
                 fileMap.put(FILE_MIMETYPE, mimeType);
                 fileMap.put(FILE_FILETYPE, fileType);
 
@@ -272,13 +274,14 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected String getUrl(final DropboxClient client, final Metadata metadata) {
-        // TODO implement
-        return metadata.getPathLower();
+    protected String getUrl(final String memberId, final Metadata metadata) throws URISyntaxException {
+        final URIBuilder builder = new URIBuilder();
+        return builder.setScheme("https").setHost("www.dropbox.com").setPath("/home/" + memberId + metadata.getPathDisplay()).build()
+                .toASCIIString();
     }
 
     protected String getFileContents(final DropboxClient client, final DbxDownloader<FileMetadata> downloader, final FileMetadata file,
-            final String mimeType, final boolean ignoreError) {
+            final String mimeType, final String url, final boolean ignoreError) {
         try (final InputStream in = client.getFileInputStream(downloader, file)) {
             Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
             if (extractor == null) {
@@ -293,7 +296,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 logger.warn("Failed to get contents: " + file.getName(), e);
                 return StringUtil.EMPTY;
             } else {
-                throw new DataStoreCrawlingException(getUrl(client, file), "Failed to get contents: " + file.getName(), e);
+                throw new DataStoreCrawlingException(url, "Failed to get contents: " + file.getName(), e);
             }
         }
     }

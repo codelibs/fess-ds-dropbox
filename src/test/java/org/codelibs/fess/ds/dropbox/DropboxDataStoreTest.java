@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import com.dropbox.core.v2.files.Metadata;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
@@ -43,8 +44,9 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
         super.tearDown();
     }
 
-    public void test_xxx() {
-        // TODO
-        assertTrue(true);
+    public void test_getUrl() throws Exception {
+        final Metadata metadata = new Metadata("fi le.png", "/test 1/test 2/fi le.png", "/Test 1/Test 2/fi le.png", "id");
+        assertEquals("https://www.dropbox.com/home/Yamada%20Taro/Test%201/Test%202/fi%20le.png", dataStore.getUrl("Yamada Taro", metadata));
     }
+
 }
