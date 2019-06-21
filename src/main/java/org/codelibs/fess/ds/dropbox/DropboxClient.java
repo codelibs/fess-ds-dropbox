@@ -17,20 +17,22 @@ package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
-import com.dropbox.core.v1.DbxEntry;
-import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.DbxTeamClientV2;
+import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.team.TeamMemberInfo;
+import org.apache.commons.io.output.DeferredFileOutputStream;
+import org.apache.commons.lang3.SystemUtils;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.util.TemporaryFileInputStream;
 import org.codelibs.fess.exception.DataStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -41,11 +43,14 @@ public class DropboxClient {
     protected static final String APP_KEY = "app_key";
     protected static final String APP_SECRET = "app_secret";
     protected static final String ACCESS_TOKEN = "access_token";
-    String downloadPath = "";
+
+    protected static final String MAX_CACHED_CONTENT_SIZE = "max_cached_content_size";
 
     protected DbxRequestConfig config;
     protected DbxTeamClientV2 client;
     protected Map<String, String> params;
+
+    protected int maxCachedContentSize = 1024 * 1024;
 
     public DropboxClient(final Map<String, String> params) {
         this.params = params;
@@ -57,39 +62,41 @@ public class DropboxClient {
 
         this.config = new DbxRequestConfig("fess");
         this.client = new DbxTeamClientV2(config, accessToken);
+
+        final String size = params.get(MAX_CACHED_CONTENT_SIZE);
+        if (StringUtil.isNotBlank(size)) {
+            maxCachedContentSize = Integer.parseInt(size);
+        }
     }
 
     public void getMembers(final Consumer<TeamMemberInfo> consumer) throws DbxException {
         client.team().membersList().getMembers().forEach(consumer);
     }
 
-    // TODO get files, download file
-
-    public List getFiles() throws DbxException {
-        List<String> fileList = new LinkedList<>();
-        Map<String, String> fileMap = getMetadata();
-        for (String name : fileMap.values()) {
-            fileList.add(name);
-        }
-        return fileList;
-    }
-
-    private Map getMetadata() throws DbxException {
-        final Map<String, String> fileMap = new HashMap<>();
-        DbxClientV2 clientV2 = new DbxClientV2(config, ACCESS_TOKEN);
-        ListFolderResult listFolderResult = clientV2.files().listFolder("");
+    public void getMemberFiles(final String memberId, final String path, final Consumer<Metadata> consumer) throws DbxException {
+        ListFolderResult listFolderResult = client.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
         while (true) {
-            for (Metadata metadata : listFolderResult.getEntries()) {
-                fileMap.put(metadata.getPathLower(), metadata.getName());
+            listFolderResult.getEntries().forEach(consumer);
+            if (!listFolderResult.getHasMore()) {
+                break;
             }
-            if (!listFolderResult.getHasMore()) break;
-            listFolderResult = clientV2.files().listFolderContinue(listFolderResult.getCursor());
+            listFolderResult = client.asMember(memberId).files().listFolderContinue(listFolderResult.getCursor());
         }
-        return fileMap;
     }
 
-    public void downloadFiles() throws DbxException {
-        DbxClientV2 clientV2 = new DbxClientV2(config, ACCESS_TOKEN);
-        clientV2.files().download(downloadPath);
+    public InputStream getFileInputStream(final String memberId, final FileMetadata file) {
+        try (final DeferredFileOutputStream dfos = new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out",
+                SystemUtils.getJavaIoTmpDir())) {
+            client.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
+            dfos.flush();
+            if (dfos.isInMemory()) {
+                return new ByteArrayInputStream(dfos.getData());
+            } else {
+                return new TemporaryFileInputStream(dfos.getFile());
+            }
+        } catch (final Exception e) {
+            throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
+        }
     }
+
 }

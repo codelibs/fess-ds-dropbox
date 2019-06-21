@@ -16,8 +16,11 @@
 package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.FileMetadata;
+import org.apache.commons.io.IOUtils;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -47,6 +50,8 @@ public class DropboxClientTest extends LastaFluteTestCase {
 
     public void test() throws Exception {
         // getMembers();
+        // getMemberFiles();
+        // getFileInputStream();
     }
 
     private void getMembers() throws DbxException {
@@ -56,7 +61,47 @@ public class DropboxClientTest extends LastaFluteTestCase {
         client.getMembers(info -> System.out.println(info.getProfile().getName().getDisplayName()));
     }
 
-    private void getMetadata(){
-
+    private void getMemberFiles() throws DbxException {
+        final Map<String, String> params = new HashMap<>();
+        params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
+        final DropboxClient client = new DropboxClient(params);
+        client.getMembers(info -> {
+            try {
+                System.out.println(info.getProfile().getName().getDisplayName() + "'s Files");
+                client.getMemberFiles(info.getProfile().getTeamMemberId(), "",
+                        metadata -> System.out.println("  " + metadata.getPathDisplay()));
+            } catch (final DbxException e) {
+                e.printStackTrace();
+            }
+        });
     }
+
+    private void getFileInputStream() throws DbxException {
+        final Map<String, String> params = new HashMap<>();
+        params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
+        final DropboxClient client = new DropboxClient(params);
+        client.getMembers(info -> {
+            try {
+                System.out.println(info.getProfile().getName().getDisplayName() + "'s Files");
+                final String memberId = info.getProfile().getTeamMemberId();
+                client.getMemberFiles(memberId, "", metadata -> {
+                    System.out.println("  " + metadata.getPathDisplay());
+                    if (metadata instanceof FileMetadata) {
+                        final FileMetadata file = (FileMetadata) metadata;
+                        try {
+                            String content = IOUtils.toString(client.getFileInputStream(memberId, file), StandardCharsets.UTF_8);
+                            content = content.replaceAll("\\r\\n|\\r|\\n", "");
+                            content = content.substring(0, Math.min(20, content.length()));
+                            System.out.println("    " + content);
+                        } catch (final Exception e) {
+                            System.out.println("    Failed by 'restricted_content'");
+                        }
+                    }
+                });
+            } catch (final DbxException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
 }
