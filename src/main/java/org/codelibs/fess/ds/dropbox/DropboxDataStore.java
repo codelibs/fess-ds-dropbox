@@ -137,10 +137,11 @@ public class DropboxDataStore extends AbstractDataStore {
         try {
             client.getMembers(member -> {
                 final String memberId = member.getProfile().getTeamMemberId();
+                final String folderName = member.getProfile().getName().getDisplayName();
                 try {
-                    client.getMemberFiles(memberId, "", metadata -> executorService.execute(() -> {
-                        storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, metadata);
-                    }));
+                    client.getMemberFiles(memberId, "", metadata -> executorService.execute(
+                            () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, folderName,
+                                    metadata)));
                 } catch (final DbxException e) {
                     logger.debug("Failed to crawl member files: {}", memberId, e);
                 }
@@ -152,10 +153,10 @@ public class DropboxDataStore extends AbstractDataStore {
 
     protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
-            final String memberId, final Metadata metadata) {
+            final String memberId, final String folderName, final Metadata metadata) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
-            final String url = getUrl(memberId, metadata);
+            final String url = getUrl(folderName, metadata);
 
             final UrlFilter urlFilter = config.urlFilter;
             if (urlFilter != null && !urlFilter.match(url)) {
@@ -274,9 +275,9 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected String getUrl(final String memberId, final Metadata metadata) throws URISyntaxException {
+    protected String getUrl(final String folderName, final Metadata metadata) throws URISyntaxException {
         final URIBuilder builder = new URIBuilder();
-        return builder.setScheme("https").setHost("www.dropbox.com").setPath("/home/" + memberId + metadata.getPathDisplay()).build()
+        return builder.setScheme("https").setHost("www.dropbox.com").setPath("/home/" + folderName + metadata.getPathDisplay()).build()
                 .toASCIIString();
     }
 
