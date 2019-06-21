@@ -19,6 +19,7 @@ import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.Metadata;
+import org.apache.commons.io.IOUtils;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
@@ -26,15 +27,21 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
+import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -82,6 +89,9 @@ public class DropboxDataStore extends AbstractDataStore {
 
     // - folder
     protected static final String FILE_SHARED_FOLDER_ID = "shared_folder_id";
+
+    // other
+    protected String extractorName = "tikaExtractor";
 
     protected String getName() {
         return "Dropbox";
@@ -251,8 +261,26 @@ public class DropboxDataStore extends AbstractDataStore {
     }
 
     protected String getFileContents(final DropboxClient client, final FileMetadata file, final boolean ignoreError) {
-        // TODO implement
-        return file.getName();
+        // TODO implement Client
+        // try (final InputStream in = client.getFileInputStream(file)) {
+        try (final InputStream in = IOUtils.toInputStream(file.getName(), StandardCharsets.UTF_8)) {
+            final String mimeType = getFileMimeType(client, file);
+            Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
+            if (extractor == null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("use a default extractor as {} by {}", extractorName, mimeType);
+                }
+                extractor = ComponentUtil.getComponent(extractorName);
+            }
+            return extractor.getText(in, null).getContent();
+        } catch (final Exception e) {
+            if (ignoreError) {
+                logger.warn("Failed to get contents: " + file.getName(), e);
+                return StringUtil.EMPTY;
+            } else {
+                throw new DataStoreCrawlingException(getUrl(client, file), "Failed to get contents: " + file.getName(), e);
+            }
+        }
     }
 
     protected DropboxClient createClient(final Map<String, String> paramMap) {
