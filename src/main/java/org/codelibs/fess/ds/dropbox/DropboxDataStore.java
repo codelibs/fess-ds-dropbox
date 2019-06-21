@@ -38,8 +38,6 @@ import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -137,9 +135,14 @@ public class DropboxDataStore extends AbstractDataStore {
         }
         try {
             client.getMembers(member -> {
-                // TODO implement Client
-                // client.getMemberFiles(member.getProfile().getAccountId(), metadata -> executorService
-                //         .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, metadata)));
+                final String memberId = member.getProfile().getTeamMemberId();
+                try {
+                    client.getMemberFiles(memberId, "", metadata -> executorService.execute(() -> {
+                        storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, metadata);
+                    }));
+                } catch (final DbxException e) {
+                    logger.debug("Failed to crawl member files: {}", memberId, e);
+                }
             });
         } catch (final DbxException e) {
             logger.debug("Failed to crawl member files.", e);
@@ -148,7 +151,7 @@ public class DropboxDataStore extends AbstractDataStore {
 
     protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
-            final Metadata metadata) {
+            final String memberId, final Metadata metadata) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
             final String url = getUrl(client, metadata);
@@ -203,7 +206,7 @@ public class DropboxDataStore extends AbstractDataStore {
 
                 final String mimeType = getFileMimeType(client, file);
                 final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
-                fileMap.put(FILE_CONTENTS, getFileContents(client, file, config.ignoreError));
+                fileMap.put(FILE_CONTENTS, getFileContents(client, memberId, file, config.ignoreError));
                 fileMap.put(FILE_MIMETYPE, mimeType);
                 fileMap.put(FILE_FILETYPE, fileType);
 
@@ -280,10 +283,9 @@ public class DropboxDataStore extends AbstractDataStore {
         return file.getMediaInfo().toString();
     }
 
-    protected String getFileContents(final DropboxClient client, final FileMetadata file, final boolean ignoreError) {
-        // TODO implement Client
-        // try (final InputStream in = client.getFileInputStream(file)) {
-        try (final InputStream in = IOUtils.toInputStream(file.getName(), StandardCharsets.UTF_8)) {
+    protected String getFileContents(final DropboxClient client, final String memberId, final FileMetadata file,
+            final boolean ignoreError) {
+        try (final InputStream in = client.getFileInputStream(memberId, file)) {
             final String mimeType = getFileMimeType(client, file);
             Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
             if (extractor == null) {
