@@ -79,13 +79,22 @@ public class DropboxDataStore extends AbstractDataStore {
     protected static final String FILE_PARENT_SHARED_FOLDER_ID = "parent_shared_folder_id";
 
     protected static final String FILE_ID = "id";
+    protected static final String FILE_PROPERTY_GROUPS = "property_groups";
+    protected static final String FILE_SHARING_INFO = "sharing_info";
 
     // - file
     protected static final String FILE_CONTENTS = "contents";
     protected static final String FILE_MIMETYPE = "mimetype";
     protected static final String FILE_FILETYPE = "filetype";
 
+    protected static final String FILE_CLIENT_MODIFIED = "client_modified";
     protected static final String FILE_CONTENT_HASH = "content_hash";
+    protected static final String FILE_HAS_EXPLICT_SHARED_MEMBERS = "has_explict_shared_members";
+    protected static final String FILE_MEDIA_INFO = "media_info";
+    protected static final String FILE_REV = "rev";
+    protected static final String FILE_SERVER_MODIFIED = "server_modified";
+    protected static final String FILE_SIZE = "size";
+    protected static final String FILE_SYMLINK_INFO = "symlink_info";
 
     // - folder
     protected static final String FILE_SHARED_FOLDER_ID = "shared_folder_id";
@@ -189,6 +198,8 @@ public class DropboxDataStore extends AbstractDataStore {
                 final FileMetadata file = (FileMetadata) metadata;
 
                 fileMap.put(FILE_ID, file.getId());
+                fileMap.put(FILE_PROPERTY_GROUPS, file.getPropertyGroups()); // List<PropertyGroup>
+                fileMap.put(FILE_SHARING_INFO, file.getSharingInfo()); // FileSharingInfo
 
                 final String mimeType = getFileMimeType(client, file);
                 final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
@@ -196,11 +207,20 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_MIMETYPE, mimeType);
                 fileMap.put(FILE_FILETYPE, fileType);
 
+                fileMap.put(FILE_CLIENT_MODIFIED, file.getClientModified());
                 fileMap.put(FILE_CONTENT_HASH, file.getContentHash());
+                fileMap.put(FILE_HAS_EXPLICT_SHARED_MEMBERS, file.getHasExplicitSharedMembers());
+                fileMap.put(FILE_MEDIA_INFO, file.getMediaInfo()); // MediaInfo
+                fileMap.put(FILE_REV, file.getRev());
+                fileMap.put(FILE_SERVER_MODIFIED, file.getServerModified());
+                fileMap.put(FILE_SIZE, file.getSize());
+                fileMap.put(FILE_SYMLINK_INFO, file.getSymlinkInfo()); // SymlinkInfo
             } else if (metadata instanceof FolderMetadata) {
                 final FolderMetadata folder = (FolderMetadata) metadata;
 
                 fileMap.put(FILE_ID, folder.getId());
+                fileMap.put(FILE_PROPERTY_GROUPS, folder.getPropertyGroups()); // List<PropertyGroup>
+                fileMap.put(FILE_SHARING_INFO, folder.getSharingInfo()); // FolderSharingInfo
 
                 fileMap.put(FILE_SHARED_FOLDER_ID, folder.getSharedFolderId());
             }
