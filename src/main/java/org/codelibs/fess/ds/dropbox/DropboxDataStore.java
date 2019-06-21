@@ -16,10 +16,16 @@
 package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.Metadata;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
+import org.codelibs.fess.app.service.FailureUrlService;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
+import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -30,10 +36,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 public class DropboxDataStore extends AbstractDataStore {
 
@@ -50,6 +59,29 @@ public class DropboxDataStore extends AbstractDataStore {
     protected static final String INCLUDE_PATTERN = "include_pattern";
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
+
+    // scripts
+    protected static final String FILE = "file";
+
+    // - common
+    protected static final String FILE_URL = "url";
+
+    protected static final String FILE_NAME = "name";
+    protected static final String FILE_PATH_LOWER = "path_lower";
+    protected static final String FILE_PATH_DISPLAY = "path_display";
+    protected static final String FILE_PARENT_SHARED_FOLDER_ID = "parent_shared_folder_id";
+
+    protected static final String FILE_ID = "id";
+
+    // - file
+    protected static final String FILE_CONTENTS = "contents";
+    protected static final String FILE_MIMETYPE = "mimetype";
+    protected static final String FILE_FILETYPE = "filetype";
+
+    protected static final String FILE_CONTENT_HASH = "content_hash";
+
+    // - folder
+    protected static final String FILE_SHARED_FOLDER_ID = "shared_folder_id";
 
     protected String getName() {
         return "Dropbox";
@@ -86,6 +118,7 @@ public class DropboxDataStore extends AbstractDataStore {
         }
         try {
             client.getMembers(member -> {
+                // TODO implement Client
                 // client.getMemberFiles(member.getProfile().getAccountId(), metadata -> executorService
                 //         .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, metadata)));
             });
@@ -97,6 +130,129 @@ public class DropboxDataStore extends AbstractDataStore {
     protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final Metadata metadata) {
+        final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
+        try {
+            final String url = getUrl(client, metadata);
+
+            final UrlFilter urlFilter = config.urlFilter;
+            if (urlFilter != null && !urlFilter.match(url)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Not matched: {}", url);
+                }
+                return;
+            }
+
+            if (config.ignoreFolder && metadata instanceof FolderMetadata) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Ignore item: {}", metadata.getName());
+                }
+                return;
+            }
+
+            if (metadata instanceof FileMetadata) {
+                final FileMetadata file = (FileMetadata) metadata;
+                final String mimeType = getFileMimeType(client, file);
+                if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("{} is not an indexing target.", mimeType);
+                    }
+                    return;
+                }
+                if (file.getSize() > config.maxSize) {
+                    throw new MaxLengthExceededException(
+                            "The content length (" + file.getSize() + " byte) is over " + config.maxSize + " byte. The url is " + url);
+                }
+            }
+
+            logger.info("Crawling URL: {}", url);
+
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> fileMap = new HashMap<>();
+
+            fileMap.put(FILE_URL, url);
+            fileMap.put(FILE_NAME, metadata.getName());
+            fileMap.put(FILE_PATH_LOWER, metadata.getPathLower());
+            fileMap.put(FILE_PATH_DISPLAY, metadata.getPathDisplay());
+            fileMap.put(FILE_PARENT_SHARED_FOLDER_ID, metadata.getParentSharedFolderId());
+
+            if (metadata instanceof FileMetadata) {
+                final FileMetadata file = (FileMetadata) metadata;
+
+                fileMap.put(FILE_ID, file.getId());
+
+                final String mimeType = getFileMimeType(client, file);
+                final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
+                fileMap.put(FILE_CONTENTS, getFileContents(client, file, config.ignoreError));
+                fileMap.put(FILE_MIMETYPE, mimeType);
+                fileMap.put(FILE_FILETYPE, fileType);
+
+                fileMap.put(FILE_CONTENT_HASH, file.getContentHash());
+            } else if (metadata instanceof FolderMetadata) {
+                final FolderMetadata folder = (FolderMetadata) metadata;
+
+                fileMap.put(FILE_ID, folder.getId());
+
+                fileMap.put(FILE_SHARED_FOLDER_ID, folder.getSharedFolderId());
+            }
+
+            resultMap.put(FILE, fileMap);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("fileMap: {}", fileMap);
+            }
+
+            for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
+                final Object convertValue = convertValue(entry.getValue(), resultMap);
+                if (convertValue != null) {
+                    dataMap.put(entry.getKey(), convertValue);
+                }
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("dataMap: {}", dataMap);
+            }
+
+            callback.store(paramMap, dataMap);
+        } catch (final CrawlingAccessException e) {
+            logger.warn("Crawling Access Exception at : " + dataMap, e);
+
+            Throwable target = e;
+            if (target instanceof MultipleCrawlingAccessException) {
+                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+                if (causes.length > 0) {
+                    target = causes[causes.length - 1];
+                }
+            }
+
+            String errorName;
+            final Throwable cause = target.getCause();
+            if (cause != null) {
+                errorName = cause.getClass().getCanonicalName();
+            } else {
+                errorName = target.getClass().getCanonicalName();
+            }
+
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, errorName, "", target);
+        } catch (final Throwable t) {
+            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), "", t);
+        }
+    }
+
+    protected String getUrl(final DropboxClient client, final Metadata metadata) {
+        // TODO implement
+        return metadata.getPathLower();
+    }
+
+    protected String getFileMimeType(final DropboxClient client, final FileMetadata file) {
+        // TODO implement
+        return file.getMediaInfo().toString();
+    }
+
+    protected String getFileContents(final DropboxClient client, final FileMetadata file, final boolean ignoreError) {
+        // TODO implement
+        return file.getName();
     }
 
     protected DropboxClient createClient(final Map<String, String> paramMap) {
