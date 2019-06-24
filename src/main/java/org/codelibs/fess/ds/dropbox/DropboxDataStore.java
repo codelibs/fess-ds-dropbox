@@ -170,6 +170,8 @@ public class DropboxDataStore extends AbstractDataStore {
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
             final Map<String, Object> fileMap = new HashMap<>();
 
+            logger.info("Crawling URL: {}", url);
+
             fileMap.put(FILE_URL, url);
             fileMap.put(FILE_NAME, metadata.getName());
             fileMap.put(FILE_PATH_LOWER, metadata.getPathLower());
@@ -184,25 +186,26 @@ public class DropboxDataStore extends AbstractDataStore {
                             "The content length (" + file.getSize() + " byte) is over " + config.maxSize + " byte. The url is " + url);
                 }
 
-                final InputStream in = client.getFileInputStream(memberId, file);
-                final String mimeType = getFileMimeType(in, file);
-                final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
-                if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("{} is not an indexing target.", mimeType);
+                if (file.getIsDownloadable()) {
+                    final InputStream in = client.getFileInputStream(memberId, file);
+                    final String mimeType = getFileMimeType(in, file);
+                    final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
+                    if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("{} is not an indexing target.", mimeType);
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                logger.info("Crawling URL: {}", url);
+                    fileMap.put(FILE_CONTENTS, getFileContents(in, file, mimeType, url, config.ignoreError));
+                    fileMap.put(FILE_MIMETYPE, mimeType);
+                    fileMap.put(FILE_FILETYPE, fileType);
+                    in.close();
+                }
 
                 fileMap.put(FILE_ID, file.getId());
                 fileMap.put(FILE_PROPERTY_GROUPS, file.getPropertyGroups()); // List<PropertyGroup>
                 fileMap.put(FILE_SHARING_INFO, file.getSharingInfo()); // FileSharingInfo
-
-                fileMap.put(FILE_CONTENTS, getFileContents(in, file, mimeType, url, config.ignoreError));
-                fileMap.put(FILE_MIMETYPE, mimeType);
-                fileMap.put(FILE_FILETYPE, fileType);
 
                 fileMap.put(FILE_CLIENT_MODIFIED, file.getClientModified());
                 fileMap.put(FILE_CONTENT_HASH, file.getContentHash());
@@ -212,8 +215,6 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_SERVER_MODIFIED, file.getServerModified());
                 fileMap.put(FILE_SIZE, file.getSize());
                 fileMap.put(FILE_SYMLINK_INFO, file.getSymlinkInfo()); // SymlinkInfo
-
-                in.close();
             } else if (metadata instanceof FolderMetadata) {
                 final FolderMetadata folder = (FolderMetadata) metadata;
 
@@ -223,8 +224,6 @@ public class DropboxDataStore extends AbstractDataStore {
                     }
                     return;
                 }
-
-                logger.info("Crawling URL: {}", url);
 
                 fileMap.put(FILE_ID, folder.getId());
                 fileMap.put(FILE_PROPERTY_GROUPS, folder.getPropertyGroups()); // List<PropertyGroup>
