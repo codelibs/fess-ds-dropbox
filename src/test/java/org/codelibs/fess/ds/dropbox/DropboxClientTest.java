@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
 import org.apache.commons.io.IOUtils;
@@ -90,8 +89,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
                     if (metadata instanceof FileMetadata) {
                         final FileMetadata file = (FileMetadata) metadata;
                         try {
-                            final DbxDownloader<FileMetadata> downloader = client.getFileDownloader(memberId, file);
-                            String content = IOUtils.toString(client.getFileInputStream(downloader, file), StandardCharsets.UTF_8);
+                            String content = IOUtils.toString(client.getFileInputStream(memberId, file), StandardCharsets.UTF_8);
                             content = content.replaceAll("\\r\\n|\\r|\\n", "");
                             content = content.substring(0, Math.min(20, content.length()));
                             System.out.println("    " + content);

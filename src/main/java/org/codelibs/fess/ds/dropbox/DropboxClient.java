@@ -85,14 +85,10 @@ public class DropboxClient {
         }
     }
 
-    public DbxDownloader<FileMetadata> getFileDownloader(final String memberId, final FileMetadata file) throws DbxException {
-        return client.asMember(memberId).files().download(file.getPathDisplay());
-    }
-
-    public InputStream getFileInputStream(final DbxDownloader<FileMetadata> downloader, final FileMetadata file) {
+    public InputStream getFileInputStream(final String memberId, final FileMetadata file) {
         try (final DeferredFileOutputStream dfos = new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out",
                 SystemUtils.getJavaIoTmpDir())) {
-            downloader.download(dfos);
+            client.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());

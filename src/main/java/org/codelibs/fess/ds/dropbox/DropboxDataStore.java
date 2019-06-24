@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
@@ -39,8 +38,10 @@ import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.net.URLConnection;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -183,8 +184,8 @@ public class DropboxDataStore extends AbstractDataStore {
                             "The content length (" + file.getSize() + " byte) is over " + config.maxSize + " byte. The url is " + url);
                 }
 
-                final DbxDownloader<FileMetadata> downloader = client.getFileDownloader(memberId, file);
-                final String mimeType = downloader.getContentType();
+                final InputStream in = client.getFileInputStream(memberId, file);
+                final String mimeType = getFileMimeType(in, file);
                 final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
                 if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
                     if (logger.isDebugEnabled()) {
@@ -199,7 +200,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_PROPERTY_GROUPS, file.getPropertyGroups()); // List<PropertyGroup>
                 fileMap.put(FILE_SHARING_INFO, file.getSharingInfo()); // FileSharingInfo
 
-                fileMap.put(FILE_CONTENTS, getFileContents(client, downloader, file, mimeType, url, config.ignoreError));
+                fileMap.put(FILE_CONTENTS, getFileContents(in, file, mimeType, url, config.ignoreError));
                 fileMap.put(FILE_MIMETYPE, mimeType);
                 fileMap.put(FILE_FILETYPE, fileType);
 
@@ -211,6 +212,8 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_SERVER_MODIFIED, file.getServerModified());
                 fileMap.put(FILE_SIZE, file.getSize());
                 fileMap.put(FILE_SYMLINK_INFO, file.getSymlinkInfo()); // SymlinkInfo
+
+                in.close();
             } else if (metadata instanceof FolderMetadata) {
                 final FolderMetadata folder = (FolderMetadata) metadata;
 
@@ -281,9 +284,21 @@ public class DropboxDataStore extends AbstractDataStore {
                 .toASCIIString();
     }
 
-    protected String getFileContents(final DropboxClient client, final DbxDownloader<FileMetadata> downloader, final FileMetadata file,
-            final String mimeType, final String url, final boolean ignoreError) {
-        try (final InputStream in = client.getFileInputStream(downloader, file)) {
+    protected String getFileMimeType(final InputStream in, final FileMetadata file) {
+        try {
+            final String mimeType = URLConnection.guessContentTypeFromStream(in);
+            if (mimeType != null) {
+                return mimeType;
+            }
+        } catch (final IOException e) {
+            logger.warn("Failed to get file mime type: " + file.getName(), e);
+        }
+        return URLConnection.guessContentTypeFromName(file.getName());
+    }
+
+    protected String getFileContents(final InputStream in, final FileMetadata file, final String mimeType, final String url,
+            final boolean ignoreError) {
+        try {
             Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
             if (extractor == null) {
                 if (logger.isDebugEnabled()) {
