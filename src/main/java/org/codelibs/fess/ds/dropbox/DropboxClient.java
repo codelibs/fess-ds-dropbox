@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
 import com.dropbox.core.v2.DbxTeamClientV2;
@@ -33,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -85,7 +85,7 @@ public class DropboxClient {
         }
     }
 
-    public InputStream getFileInputStream(final String memberId, final FileMetadata file) {
+    public InputStream getFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
         try (final DeferredFileOutputStream dfos = new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out",
                 SystemUtils.getJavaIoTmpDir())) {
             client.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
@@ -95,7 +95,7 @@ public class DropboxClient {
             } else {
                 return new TemporaryFileInputStream(dfos.getFile());
             }
-        } catch (final Exception e) {
+        } catch (final IOException e) {
             throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
         }
     }

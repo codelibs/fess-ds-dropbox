@@ -89,6 +89,7 @@ public class DropboxDataStore extends AbstractDataStore {
 
     protected static final String FILE_CLIENT_MODIFIED = "client_modified";
     protected static final String FILE_CONTENT_HASH = "content_hash";
+    protected static final String FILE_EXPORT_INFO = "export_info";
     protected static final String FILE_HAS_EXPLICT_SHARED_MEMBERS = "has_explict_shared_members";
     protected static final String FILE_MEDIA_INFO = "media_info";
     protected static final String FILE_REV = "rev";
@@ -187,20 +188,29 @@ public class DropboxDataStore extends AbstractDataStore {
                 }
 
                 if (file.getIsDownloadable()) {
-                    final InputStream in = client.getFileInputStream(memberId, file);
-                    final String mimeType = getFileMimeType(in, file);
-                    final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
-                    if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("{} is not an indexing target.", mimeType);
+                    try (final InputStream in = client.getFileInputStream(memberId, file)) {
+                        final String mimeType = getFileMimeType(in, file);
+                        final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
+                        if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("{} is not an indexing target.", mimeType);
+                            }
+                            return;
                         }
-                        return;
-                    }
 
-                    fileMap.put(FILE_CONTENTS, getFileContents(in, file, mimeType, url, config.ignoreError));
-                    fileMap.put(FILE_MIMETYPE, mimeType);
-                    fileMap.put(FILE_FILETYPE, fileType);
-                    in.close();
+                        fileMap.put(FILE_CONTENTS, getFileContents(in, file, mimeType, url, config.ignoreError));
+                        fileMap.put(FILE_MIMETYPE, mimeType);
+                        fileMap.put(FILE_FILETYPE, fileType);
+                    } catch (final DbxException e) {
+                        if (config.ignoreError) {
+                            logger.warn("Failed to download " + file.getName() + " by " + e.getMessage());
+                            return;
+                        } else {
+                            throw new DataStoreCrawlingException(url, "Failed to download " + file.getName(), e);
+                        }
+                    }
+                } else {
+                    fileMap.put(FILE_EXPORT_INFO, file.getExportInfo()); // ExportInfo
                 }
 
                 fileMap.put(FILE_ID, file.getId());
