@@ -85,6 +85,14 @@ public class DropboxClient {
         }
     }
 
+    public void getMemberPapers(final String memberId, final Consumer<String> consumer) throws DbxException {
+        // TODO implement
+    }
+
+    public void getTeamFiles(final String path, final Consumer<Metadata> consumer) throws DbxException {
+        // TODO implement
+    }
+
     public InputStream getFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
         try (final DeferredFileOutputStream dfos = new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out",
                 SystemUtils.getJavaIoTmpDir())) {
