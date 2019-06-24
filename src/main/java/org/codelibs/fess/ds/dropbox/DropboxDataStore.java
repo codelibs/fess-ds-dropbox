@@ -292,7 +292,8 @@ public class DropboxDataStore extends AbstractDataStore {
         } catch (final IOException e) {
             logger.warn("Failed to get file mime type: " + file.getName(), e);
         }
-        return URLConnection.guessContentTypeFromName(file.getName());
+        final String mimeType = URLConnection.guessContentTypeFromName(file.getName());
+        return (mimeType != null) ? mimeType : "application/octet-stream";
     }
 
     protected String getFileContents(final InputStream in, final FileMetadata file, final String mimeType, final String url,
