@@ -21,6 +21,10 @@ import com.dropbox.core.v2.DbxTeamClientV2;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.paper.DbxUserPaperRequests;
+import com.dropbox.core.v2.paper.ListPaperDocsResponse;
+import com.dropbox.core.v2.team.DbxTeamTeamRequests;
+import com.dropbox.core.v2.team.TeamFolderListResult;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 import org.apache.commons.io.output.DeferredFileOutputStream;
 import org.apache.commons.lang3.SystemUtils;
@@ -87,10 +91,26 @@ public class DropboxClient {
 
     public void getMemberPapers(final String memberId, final Consumer<String> consumer) throws DbxException {
         // TODO implement
+        ListPaperDocsResponse listPaperDocsResponse = new DbxUserPaperRequests().docsListBuilder().start();
+        while (true) {
+            listPaperDocsResponse.getDocIds().forEach(consumer);
+            if (!listPaperDocsResponse.getHasMore()) {
+                break;
+            }
+            listPaperDocsResponse = new DbxUserPaperRequests().docsListContinue(listPaperDocsResponse.getCursor());
+        }
     }
 
     public void getTeamFiles(final String path, final Consumer<Metadata> consumer) throws DbxException {
         // TODO implement
+        TeamFolderListResult teamFolderListResult = new DbxTeamTeamRequests().teamFolderList();
+        while (true) {
+            teamFolderListResult.getTeamFolders().forEach();
+            if (!teamFolderListResult.getHasMore()) {
+                break;
+            }
+            teamFolderListResult = new DbxTeamTeamRequests().teamFolderListContinue(teamFolderListResult.getCursor());
+        }
     }
 
     public InputStream getFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
