@@ -119,8 +119,7 @@ public class DropboxDataStore extends AbstractDataStore {
 
         try {
             final DropboxClient client = createClient(paramMap);
-            crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client);
-            // TODO crawlTeamFiles
+            crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client);
             // TODO crawlMemberPapers
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
@@ -132,35 +131,35 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected void crawlMemberFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void crawlTeamFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Crawling member files.");
+            logger.debug("Crawling team files.");
         }
         try {
-            client.getMembers(member -> {
-                final String memberId = member.getProfile().getTeamMemberId();
-                final String folderName = member.getProfile().getName().getDisplayName();
+            final String adminId = client.getAdmin().getProfile().getTeamMemberId();
+            client.getTeamFolders(folder -> {
+                final String teamFolderId = folder.getTeamFolderId();
                 try {
-                    client.getMemberFiles(memberId, "", metadata -> executorService.execute(
-                            () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, folderName,
-                                    metadata)));
+                    client.getTeamFiles(adminId, teamFolderId, metadata -> executorService.execute(
+                            () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, adminId,
+                                    teamFolderId, metadata)));
                 } catch (final DbxException e) {
-                    logger.debug("Failed to crawl member files: {}", memberId, e);
+                    logger.debug("Failed to crawl team files.", e);
                 }
             });
         } catch (final DbxException e) {
-            logger.debug("Failed to crawl member files.", e);
+            logger.debug("Failed to crawl team files.", e);
         }
     }
 
     protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
-            final String memberId, final String folderName, final Metadata metadata) {
+            final String adminId, final String teamFolderId, final Metadata metadata) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
-            final String url = getUrl(folderName, metadata);
+            final String url = getUrl(metadata);
 
             final UrlFilter urlFilter = config.urlFilter;
             if (urlFilter != null && !urlFilter.match(url)) {
@@ -190,7 +189,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 }
 
                 if (file.getIsDownloadable()) {
-                    try (final InputStream in = client.getFileInputStream(memberId, file)) {
+                    try (final InputStream in = client.getTeamFileInputStream(adminId, teamFolderId, file)) {
                         final String mimeType = getFileMimeType(in, file);
                         final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
                         if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
@@ -289,9 +288,8 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected String getUrl(final String folderName, final Metadata metadata) throws URISyntaxException {
-        final URIBuilder builder = new URIBuilder();
-        return builder.setScheme("https").setHost("www.dropbox.com").setPath("/home/" + folderName + metadata.getPathDisplay()).build()
+    protected String getUrl(final Metadata metadata) throws URISyntaxException {
+        return new URIBuilder().setScheme("https").setHost("www.dropbox.com").setPath("/home" + metadata.getPathDisplay()).build()
                 .toASCIIString();
     }
 
