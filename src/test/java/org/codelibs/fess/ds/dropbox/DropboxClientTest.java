@@ -51,7 +51,10 @@ public class DropboxClientTest extends LastaFluteTestCase {
     public void test() throws Exception {
         // getMembers();
         // getMemberFiles();
+        // getTeamFiles();
+        // getMemberPaperIds();
         // getFileInputStream();
+        // getTeamFileInputStream();
     }
 
     private void getMembers() throws DbxException {
@@ -70,6 +73,34 @@ public class DropboxClientTest extends LastaFluteTestCase {
                 System.out.println(info.getProfile().getName().getDisplayName() + "'s Files");
                 client.getMemberFiles(info.getProfile().getTeamMemberId(), "",
                         metadata -> System.out.println("  " + metadata.getPathDisplay()));
+            } catch (final DbxException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void getTeamFiles() throws DbxException {
+        final Map<String, String> params = new HashMap<>();
+        params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
+        final DropboxClient client = new DropboxClient(params);
+        final String adminId = client.getAdmin().getProfile().getTeamMemberId();
+        client.getTeamFolders(folder -> {
+            try {
+                client.getTeamFiles(adminId, folder.getTeamFolderId(), metadata -> System.out.println(metadata.getPathDisplay()));
+            } catch (final DbxException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void getMemberPaperIds() throws DbxException {
+        final Map<String, String> params = new HashMap<>();
+        params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
+        final DropboxClient client = new DropboxClient(params);
+        client.getMembers(info -> {
+            try {
+                System.out.println(info.getProfile().getName().getDisplayName() + "'s Papers");
+                client.getMemberPaperIds(info.getProfile().getTeamMemberId(), System.out::println);
             } catch (final DbxException e) {
                 e.printStackTrace();
             }
@@ -95,6 +126,35 @@ public class DropboxClientTest extends LastaFluteTestCase {
                             System.out.println("    " + content);
                         } catch (final Exception e) {
                             System.out.println("    Failed by 'restricted_content'");
+                        }
+                    }
+                });
+            } catch (final DbxException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void getTeamFileInputStream() throws DbxException {
+        final Map<String, String> params = new HashMap<>();
+        params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
+        final DropboxClient client = new DropboxClient(params);
+        final String adminId = client.getAdmin().getProfile().getTeamMemberId();
+        client.getTeamFolders(folder -> {
+            final String teamFolderId = folder.getTeamFolderId();
+            try {
+                client.getTeamFiles(adminId, teamFolderId, metadata -> {
+                    System.out.println(metadata.getPathDisplay());
+                    if (metadata instanceof FileMetadata) {
+                        final FileMetadata file = (FileMetadata) metadata;
+                        try {
+                            String content =
+                                    IOUtils.toString(client.getTeamFileInputStream(adminId, teamFolderId, file), StandardCharsets.UTF_8);
+                            content = content.replaceAll("\\r\\n|\\r|\\n", "");
+                            content = content.substring(0, Math.min(20, content.length()));
+                            System.out.println("  " + content);
+                        } catch (final Exception e) {
+                            e.printStackTrace();
                         }
                     }
                 });
