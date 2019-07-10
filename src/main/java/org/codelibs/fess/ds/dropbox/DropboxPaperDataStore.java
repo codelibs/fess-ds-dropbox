@@ -18,8 +18,10 @@ package org.codelibs.fess.ds.dropbox;
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.paper.PaperDocExportResult;
+import com.dropbox.core.v2.team.TeamMemberInfo;
 import org.apache.http.client.utils.URIBuilder;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
@@ -29,19 +31,20 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.dropbox.DropboxDataStore.Config;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
+import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import static org.codelibs.fess.ds.dropbox.DropboxDataStore.DEFAULT_PERMISSIONS;
 import static org.codelibs.fess.ds.dropbox.DropboxDataStore.NUMBER_OF_THREADS;
 
 public class DropboxPaperDataStore extends AbstractDataStore {
@@ -57,6 +60,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     protected static final String PAPER_MIMETYPE = "mimetype";
     protected static final String PAPER_FILETYPE = "filetype";
     protected static final String PAPER_REVISION = "revision";
+    protected static final String PAPER_ROLES = "roles";
 
     // other
     protected String extractorName = "tikaExtractor";
@@ -96,9 +100,11 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         try {
             client.getMembers(member -> {
                 final String memberId = member.getProfile().getTeamMemberId();
+                final List<String> roles = Collections.singletonList(getMemberRole(member));
                 try {
                     client.getMemberPaperIds(memberId, docId -> executorService.execute(
-                            () -> storePaper(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, docId)));
+                            () -> storePaper(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, docId,
+                                    roles)));
                 } catch (final DbxException e) {
                     logger.debug("Failed to crawl member papers: {}", memberId, e);
                 }
@@ -110,7 +116,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
 
     protected void storePaper(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
-            final String memberId, final String docId) {
+            final String memberId, final String docId, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
@@ -132,6 +138,15 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             paperMap.put(PAPER_MIMETYPE, mimeType);
             paperMap.put(PAPER_FILETYPE, fileType);
             paperMap.put(PAPER_REVISION, result.getRevision());
+
+            // TODO permissions
+            // final List<String> permissions = getPaperPermissions(client, memberId, docId);
+            final List<String> permissions = new ArrayList<>();
+            permissions.addAll(roles);
+            final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
+            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+                    .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
+            paperMap.put(PAPER_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
             resultMap.put(PAPER, paperMap);
 
@@ -200,6 +215,10 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
             }
         }
+    }
+
+    protected String getMemberRole(final TeamMemberInfo member) {
+        return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
     }
 
     protected DropboxClient createClient(final Map<String, String> paramMap) {
