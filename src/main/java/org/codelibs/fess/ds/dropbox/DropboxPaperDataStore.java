@@ -15,17 +15,26 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.paper.PaperDocExportResult;
+import org.apache.http.client.utils.URIBuilder;
+import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
+import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.ds.dropbox.DropboxDataStore.Config;
 import org.codelibs.fess.es.config.exentity.DataConfig;
+import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -42,22 +51,32 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     // scripts
     protected static final String PAPER = "paper";
     protected static final String PAPER_URL = "url";
+    protected static final String PAPER_TITLE = "title";
+    protected static final String PAPER_CONTENTS = "contents";
+    protected static final String PAPER_OWNER = "owner";
+    protected static final String PAPER_MIMETYPE = "mimetype";
+    protected static final String PAPER_FILETYPE = "filetype";
+    protected static final String PAPER_REVISION = "revision";
 
     // other
     protected String extractorName = "tikaExtractor";
 
     protected String getName() {
-        return "Dropbox(Paper)";
+        return "DropboxPaper";
     }
 
     @Override
     protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
+        final Config config = new Config(paramMap);
+        if (logger.isDebugEnabled()) {
+            logger.debug("config: {}", config);
+        }
         final ExecutorService executorService =
                 Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
         try {
             final DropboxClient client = createClient(paramMap);
-            // TODO crawlMemberPapers
+            crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
             if (logger.isDebugEnabled()) {
@@ -69,17 +88,17 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     }
 
     protected void crawlMemberPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final DropboxClient client) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
+            final Config config, final DropboxClient client) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Crawling user papers.");
+            logger.debug("Crawling member papers.");
         }
         try {
             client.getMembers(member -> {
                 final String memberId = member.getProfile().getTeamMemberId();
                 try {
-                    client.getMemberPaperIds(memberId, docId -> {
-                        // client.getPaperDownloader(memberId, docId)
-                    });
+                    client.getMemberPaperIds(memberId, docId -> executorService.execute(
+                            () -> storePaper(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, docId)));
                 } catch (final DbxException e) {
                     logger.debug("Failed to crawl member papers: {}", memberId, e);
                 }
@@ -89,18 +108,30 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
-    protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final DropboxClient client) {
+    protected void storePaper(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
+            final String memberId, final String docId) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
-            final String url = ""; // TODO
-
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
             final Map<String, Object> paperMap = new HashMap<>();
+
+            final String url = getUrl(docId);
 
             logger.info("Crawling URL: {}", url);
 
             paperMap.put(PAPER_URL, url);
+
+            final DbxDownloader<PaperDocExportResult> downloader = client.getPaperDownloader(memberId, docId);
+            final PaperDocExportResult result = downloader.getResult();
+            paperMap.put(PAPER_TITLE, result.getTitle());
+            final String mimeType = result.getMimeType();
+            final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
+            paperMap.put(PAPER_CONTENTS, getPaperContents(downloader.getInputStream(), mimeType, url, config.ignoreError));
+            paperMap.put(PAPER_OWNER, result.getOwner());
+            paperMap.put(PAPER_MIMETYPE, mimeType);
+            paperMap.put(PAPER_FILETYPE, fileType);
+            paperMap.put(PAPER_REVISION, result.getRevision());
 
             resultMap.put(PAPER, paperMap);
 
@@ -144,6 +175,30 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             logger.warn("Crawling Access Exception at : " + dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), "", t);
+        }
+    }
+
+    protected String getUrl(final String docId) throws URISyntaxException {
+        return new URIBuilder().setScheme("https").setHost("paper.dropbox.com").setPath("/doc/" + docId).build().toASCIIString();
+    }
+
+    protected String getPaperContents(final InputStream in, final String mimeType, final String url, final boolean ignoreError) {
+        try {
+            Extractor extractor = ComponentUtil.getExtractorFactory().getExtractor(mimeType);
+            if (extractor == null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("use a default extractor as {} by {}", extractorName, mimeType);
+                }
+                extractor = ComponentUtil.getComponent(extractorName);
+            }
+            return extractor.getText(in, null).getContent();
+        } catch (final Exception e) {
+            if (ignoreError) {
+                logger.warn("Failed to get paper contents: " + url, e);
+                return StringUtil.EMPTY;
+            } else {
+                throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
+            }
         }
     }
 

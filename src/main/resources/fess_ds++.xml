@@ -5,4 +5,7 @@
 	<component name="dropboxDataStore" class="org.codelibs.fess.ds.dropbox.DropboxDataStore">
 		<postConstruct name="register"></postConstruct>
 	</component>
+	<component name="dropboxPaperDataStore" class="org.codelibs.fess.ds.dropbox.DropboxPaperDataStore">
+		<postConstruct name="register"></postConstruct>
+	</component>
 </components>

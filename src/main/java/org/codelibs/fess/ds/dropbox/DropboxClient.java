@@ -171,7 +171,7 @@ public class DropboxClient {
     }
 
     public DbxDownloader<PaperDocExportResult> getPaperDownloader(final String memberId, final String docId) throws DbxException {
-        return client.asMember(memberId).paper().docsDownload(docId, ExportFormat.HTML);
+        return client.asMember(memberId).paper().docsDownload(docId, ExportFormat.MARKDOWN);
     }
 
     public TeamMemberInfo getAdmin() throws DbxException {
