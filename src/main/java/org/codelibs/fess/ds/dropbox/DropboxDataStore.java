@@ -167,6 +167,7 @@ public class DropboxDataStore extends AbstractDataStore {
             final String adminId = client.getAdmin(members).getProfile().getTeamMemberId();
             client.getTeamFolders(folder -> {
                 final String teamFolderId = folder.getTeamFolderId();
+                // TODO use group
                 final List<String> roles = members.stream().map(this::getMemberRole).collect(Collectors.toList());
                 try {
                     client.getTeamFiles(adminId, teamFolderId, "", false, metadata -> {
@@ -175,8 +176,8 @@ public class DropboxDataStore extends AbstractDataStore {
                                     () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, null,
                                             adminId, teamFolderId, metadata.getPathDisplay(), metadata, roles));
                         } else if (metadata instanceof FolderMetadata) {
-                            if (members.stream().noneMatch(
-                                    member -> member.getProfile().getMemberFolderId().equals(((FolderMetadata) metadata).getId()))) {
+                            if (members.stream()
+                                    .noneMatch(member -> member.getProfile().getName().getDisplayName().equals(metadata.getName()))) {
                                 try {
                                     client.getTeamFiles(adminId, teamFolderId, metadata.getPathDisplay(), true, meta -> executorService
                                             .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,

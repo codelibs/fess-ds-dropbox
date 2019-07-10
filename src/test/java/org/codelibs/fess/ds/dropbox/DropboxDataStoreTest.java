@@ -15,7 +15,6 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.v2.files.Metadata;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
