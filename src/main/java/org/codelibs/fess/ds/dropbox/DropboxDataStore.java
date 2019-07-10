@@ -65,6 +65,7 @@ public class DropboxDataStore extends AbstractDataStore {
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
     protected static final String INCLUDE_PATTERN = "include_pattern";
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
+    protected static final String DEFAULT_PERMISSIONS = "default_permissions";
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
 
     // scripts
@@ -222,6 +223,9 @@ public class DropboxDataStore extends AbstractDataStore {
             // final List<String> permissions = getFilePermissions(client, metadata);
             final List<String> permissions = new ArrayList<>();
             permissions.addAll(roles);
+            final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
+            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+                    .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             fileMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
             fileMap.put(FILE_NAME, metadata.getName());
