@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
 import com.dropbox.core.v2.DbxClientV2;
@@ -23,7 +24,9 @@ import com.dropbox.core.v2.common.PathRoot;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.paper.ExportFormat;
 import com.dropbox.core.v2.paper.ListPaperDocsResponse;
+import com.dropbox.core.v2.paper.PaperDocExportResult;
 import com.dropbox.core.v2.team.AdminTier;
 import com.dropbox.core.v2.team.TeamFolderListResult;
 import com.dropbox.core.v2.team.TeamFolderMetadata;
@@ -154,6 +157,10 @@ public class DropboxClient {
         } catch (final IOException e) {
             throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
         }
+    }
+
+    public DbxDownloader<PaperDocExportResult> getPaperDownloader(final String memberId, final String docId) throws DbxException {
+        return client.asMember(memberId).paper().docsDownload(docId, ExportFormat.HTML);
     }
 
     public TeamMemberInfo getAdmin() throws DbxException {
