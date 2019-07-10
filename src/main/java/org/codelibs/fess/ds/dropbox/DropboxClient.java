@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -83,6 +84,10 @@ public class DropboxClient {
         client.team().membersList().getMembers().forEach(consumer);
     }
 
+    public List<TeamMemberInfo> getMembers() throws DbxException {
+        return client.team().membersList().getMembers();
+    }
+
     public void getMemberFiles(final String memberId, final String path, final Consumer<Metadata> consumer) throws DbxException {
         ListFolderResult listFolderResult = client.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
         while (true) {
@@ -117,8 +122,14 @@ public class DropboxClient {
     }
 
     public void getTeamFiles(final String adminId, final String teamFolderId, final Consumer<Metadata> consumer) throws DbxException {
+        getTeamFiles(adminId, teamFolderId, "", true, consumer);
+    }
+
+    public void getTeamFiles(final String adminId, final String teamFolderId, final String path, final boolean recursive,
+            final Consumer<Metadata> consumer) throws DbxException {
         final DbxClientV2 clientV2 = client.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId));
-        ListFolderResult listFolderResult = clientV2.files().listFolderBuilder("ns:" + teamFolderId).withRecursive(true).start();
+        ListFolderResult listFolderResult =
+                clientV2.files().listFolderBuilder("ns:" + teamFolderId + path).withRecursive(recursive).start();
         while (true) {
             listFolderResult.getEntries().forEach(consumer);
             if (!listFolderResult.getHasMore()) {
@@ -164,7 +175,11 @@ public class DropboxClient {
     }
 
     public TeamMemberInfo getAdmin() throws DbxException {
-        for (final TeamMemberInfo member : client.team().membersList().getMembers()) {
+        return getAdmin(client.team().membersList().getMembers());
+    }
+
+    public TeamMemberInfo getAdmin(final List<TeamMemberInfo> members) {
+        for (final TeamMemberInfo member : members) {
             if (member.getRole() == AdminTier.TEAM_ADMIN) {
                 return member;
             }

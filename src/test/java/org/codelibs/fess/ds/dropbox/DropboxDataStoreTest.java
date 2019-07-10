@@ -45,8 +45,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
     }
 
     public void test_getUrl() throws Exception {
-        final Metadata metadata = new Metadata("fi le.png", "/test 1/test 2/fi le.png", "/Test 1/Test 2/fi le.png", "id");
-        assertEquals("https://www.dropbox.com/home/Yamada%20Taro/Test%201/Test%202/fi%20le.png", dataStore.getUrl("Yamada Taro", metadata));
+        assertEquals("https://www.dropbox.com/home/Test%201/Test%202/fi%20le.png", dataStore.getUrl("/Test 1/Test 2/fi le.png"));
     }
 
 }
