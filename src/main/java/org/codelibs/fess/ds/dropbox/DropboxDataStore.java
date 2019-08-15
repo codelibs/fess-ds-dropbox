@@ -106,7 +106,7 @@ public class DropboxDataStore extends AbstractDataStore {
     protected String extractorName = "tikaExtractor";
 
     protected String getName() {
-        return "Dropbox";
+        return this.getClass().getSimpleName();
     }
 
     @Override
