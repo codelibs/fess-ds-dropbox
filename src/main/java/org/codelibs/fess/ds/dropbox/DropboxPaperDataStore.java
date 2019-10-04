@@ -129,6 +129,14 @@ public class DropboxPaperDataStore extends AbstractDataStore {
 
             final String url = getUrlFromId(docId);
 
+            final UrlFilter urlFilter = config.urlFilter;
+            if (urlFilter != null && !urlFilter.match(url)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Not matched: {}", url);
+                }
+                return;
+            }
+            
             logger.info("Crawling URL: {}", url);
 
             paperMap.put(PAPER_URL, url);
