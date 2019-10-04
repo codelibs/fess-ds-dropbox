@@ -136,7 +136,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 }
                 return;
             }
-            
+
             logger.info("Crawling URL: {}", url);
 
             paperMap.put(PAPER_URL, url);

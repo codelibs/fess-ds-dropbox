@@ -71,7 +71,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         client.getMembers(info -> {
             try {
                 System.out.println(info.getProfile().getName().getDisplayName() + "'s Files");
-                client.getMemberFiles(info.getProfile().getTeamMemberId(), "",
+                client.getMemberFiles(info.getProfile().getTeamMemberId(), "", false,
                         metadata -> System.out.println("  " + metadata.getPathDisplay()));
             } catch (final DbxException e) {
                 e.printStackTrace();
@@ -115,7 +115,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
             try {
                 System.out.println(info.getProfile().getName().getDisplayName() + "'s Files");
                 final String memberId = info.getProfile().getTeamMemberId();
-                client.getMemberFiles(memberId, "", metadata -> {
+                client.getMemberFiles(memberId, "", false, metadata -> {
                     System.out.println("  " + metadata.getPathDisplay());
                     if (metadata instanceof FileMetadata) {
                         final FileMetadata file = (FileMetadata) metadata;
