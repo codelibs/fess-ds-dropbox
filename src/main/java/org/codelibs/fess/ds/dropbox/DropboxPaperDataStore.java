@@ -17,6 +17,7 @@ package org.codelibs.fess.ds.dropbox;
 
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.paper.PaperDocExportResult;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 import org.apache.http.client.utils.URIBuilder;
@@ -26,6 +27,7 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
 import org.codelibs.fess.crawler.extractor.Extractor;
+import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.dropbox.DropboxDataStore.Config;
@@ -105,6 +107,9 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                     client.getMemberPaperIds(memberId, docId -> executorService.execute(
                             () -> storePaper(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, docId,
                                     roles)));
+                    client.getMemberFiles(memberId, "", true, metadata -> executorService.execute(
+                            () -> storePaperFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, null, null,
+                                    "/" + member.getProfile().getName().getDisplayName() + metadata.getPathDisplay(), metadata, roles)));
                 } catch (final DbxException e) {
                     logger.debug("Failed to crawl member papers: {}", memberId, e);
                 }
@@ -122,7 +127,15 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
             final Map<String, Object> paperMap = new HashMap<>();
 
-            final String url = getUrl(docId);
+            final String url = getUrlFromId(docId);
+
+            final UrlFilter urlFilter = config.urlFilter;
+            if (urlFilter != null && !urlFilter.match(url)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Not matched: {}", url);
+                }
+                return;
+            }
 
             logger.info("Crawling URL: {}", url);
 
@@ -193,8 +206,93 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
-    protected String getUrl(final String docId) throws URISyntaxException {
+    protected void storePaperFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+                             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
+                             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
+                             final List<String> roles) {
+        final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
+        try {
+            final String url = getUrlFromPath(path);
+
+            final UrlFilter urlFilter = config.urlFilter;
+            if (urlFilter != null && !urlFilter.match(url)) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Not matched: {}", url);
+                }
+                return;
+            }
+
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> paperMap = new HashMap<>();
+
+            logger.info("Crawling URL: {}", url);
+
+            paperMap.put(PAPER_URL, url);
+            paperMap.put(PAPER_TITLE, metadata.getName());
+            // cannot download Paper Documents as Markdown on Dropbox because the API does not support yet.
+            paperMap.put(PAPER_CONTENTS, metadata.getName());
+
+            // TODO permissions
+            // final List<String> permissions = getFilePermissions(client, metadata);
+            final List<String> permissions = new ArrayList<>();
+            permissions.addAll(roles);
+            final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
+            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+                    .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
+            paperMap.put(PAPER_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
+
+
+            resultMap.put(PAPER, paperMap);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("paperMap: {}", paperMap);
+            }
+
+            for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
+                final Object convertValue = convertValue(entry.getValue(), resultMap);
+                if (convertValue != null) {
+                    dataMap.put(entry.getKey(), convertValue);
+                }
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("dataMap: {}", dataMap);
+            }
+
+            callback.store(paramMap, dataMap);
+        } catch (final CrawlingAccessException e) {
+            logger.warn("Crawling Access Exception at : " + dataMap, e);
+
+            Throwable target = e;
+            if (target instanceof MultipleCrawlingAccessException) {
+                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+                if (causes.length > 0) {
+                    target = causes[causes.length - 1];
+                }
+            }
+
+            String errorName;
+            final Throwable cause = target.getCause();
+            if (cause != null) {
+                errorName = cause.getClass().getCanonicalName();
+            } else {
+                errorName = target.getClass().getCanonicalName();
+            }
+
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, errorName, "", target);
+        } catch (final Throwable t) {
+            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
+            failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), "", t);
+        }
+    }
+
+    protected String getUrlFromId(final String docId) throws URISyntaxException {
         return new URIBuilder().setScheme("https").setHost("paper.dropbox.com").setPath("/doc/" + docId).build().toASCIIString();
+    }
+
+    protected String getUrlFromPath(final String path) throws URISyntaxException {
+        return new URIBuilder().setScheme("https").setHost("www.dropbox.com").setPath("/home" + path).build().toASCIIString();
     }
 
     protected String getPaperContents(final InputStream in, final String mimeType, final String url, final boolean ignoreError) {
