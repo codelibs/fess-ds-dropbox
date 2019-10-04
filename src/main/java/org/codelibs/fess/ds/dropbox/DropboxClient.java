@@ -88,10 +88,22 @@ public class DropboxClient {
         return client.team().membersList().getMembers();
     }
 
-    public void getMemberFiles(final String memberId, final String path, final Consumer<Metadata> consumer) throws DbxException {
+    public void getMemberFiles(final String memberId, final String path, final boolean crawlPapers, final Consumer<Metadata> consumer) throws DbxException {
         ListFolderResult listFolderResult = client.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
         while (true) {
-            listFolderResult.getEntries().forEach(consumer);
+            for (final Metadata file : listFolderResult.getEntries()){
+                if (crawlPapers) {
+                    if(file.getName().endsWith(".paper")) {
+                        // process only paper files (DropboxPaperDataStore)
+                        consumer.accept(file);
+                    }
+                } else {
+                    if(!file.getName().endsWith(".paper")) {
+                        // process files except paper files (DropboxDataStore)
+                        consumer.accept(file);
+                    }
+                }
+            }
             if (!listFolderResult.getHasMore()) {
                 break;
             }

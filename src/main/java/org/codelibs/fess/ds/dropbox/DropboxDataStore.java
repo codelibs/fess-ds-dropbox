@@ -148,7 +148,7 @@ public class DropboxDataStore extends AbstractDataStore {
             final String memberId = member.getProfile().getTeamMemberId();
             final List<String> roles = Collections.singletonList(getMemberRole(member));
             try {
-                client.getMemberFiles(memberId, "", metadata -> executorService.execute(
+                client.getMemberFiles(memberId, "", false, metadata -> executorService.execute(
                         () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, null, null,
                                 "/" + member.getProfile().getName().getDisplayName() + metadata.getPathDisplay(), metadata, roles)));
             } catch (final DbxException e) {
