@@ -167,8 +167,9 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 logger.debug("paperMap: {}", paperMap);
             }
 
+            final String scriptType = getScriptType(paramMap);
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
-                final Object convertValue = convertValue(getScriptType(paramMap), entry.getValue(), resultMap);
+                final Object convertValue = convertValue(scriptType, entry.getValue(), resultMap);
                 if (convertValue != null) {
                     dataMap.put(entry.getKey(), convertValue);
                 }
@@ -247,8 +248,9 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 logger.debug("paperMap: {}", paperMap);
             }
 
+            final String scriptType = getScriptType(paramMap);
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
-                final Object convertValue = convertValue(getScriptType(paramMap), entry.getValue(), resultMap);
+                final Object convertValue = convertValue(scriptType, entry.getValue(), resultMap);
                 if (convertValue != null) {
                     dataMap.put(entry.getKey(), convertValue);
                 }
