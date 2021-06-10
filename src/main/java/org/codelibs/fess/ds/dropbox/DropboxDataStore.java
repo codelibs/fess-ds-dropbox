@@ -148,8 +148,9 @@ public class DropboxDataStore extends AbstractDataStore {
             final String memberId = member.getProfile().getTeamMemberId();
             final List<String> roles = Collections.singletonList(getMemberRole(member));
             try {
-                client.getMemberFiles(memberId, "", false, metadata -> executorService.execute(
-                        () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, null, null,
+                client.getMemberFiles(memberId, "", false,
+                        metadata -> executorService.execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap,
+                                config, client, memberId, null, null,
                                 "/" + member.getProfile().getName().getDisplayName() + metadata.getPathDisplay(), metadata, roles)));
             } catch (final DbxException e) {
                 logger.debug("Failed to get member files.", e);
@@ -172,16 +173,16 @@ public class DropboxDataStore extends AbstractDataStore {
                 try {
                     client.getTeamFiles(adminId, teamFolderId, "", false, metadata -> {
                         if (metadata instanceof FileMetadata) {
-                            executorService.execute(
-                                    () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, null,
-                                            adminId, teamFolderId, metadata.getPathDisplay(), metadata, roles));
+                            executorService.execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
+                                    client, null, adminId, teamFolderId, metadata.getPathDisplay(), metadata, roles));
                         } else if (metadata instanceof FolderMetadata) {
                             if (members.stream()
                                     .noneMatch(member -> member.getProfile().getName().getDisplayName().equals(metadata.getName()))) {
                                 try {
-                                    client.getTeamFiles(adminId, teamFolderId, metadata.getPathDisplay(), true, meta -> executorService
-                                            .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
-                                                    client, null, adminId, teamFolderId, meta.getPathDisplay(), meta, roles)));
+                                    client.getTeamFiles(adminId, teamFolderId, metadata.getPathDisplay(), true,
+                                            meta -> executorService.execute(
+                                                    () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
+                                                            client, null, adminId, teamFolderId, meta.getPathDisplay(), meta, roles)));
                                 } catch (final DbxException e) {
                                     logger.debug("Failed to get team files.", e);
                                 }
@@ -243,9 +244,8 @@ public class DropboxDataStore extends AbstractDataStore {
                 }
 
                 if (file.getIsDownloadable()) {
-                    try (final InputStream in = (memberId != null) ?
-                            client.getFileInputStream(memberId, file) :
-                            client.getTeamFileInputStream(adminId, teamFolderId, file)) {
+                    try (final InputStream in = (memberId != null) ? client.getFileInputStream(memberId, file)
+                            : client.getTeamFileInputStream(adminId, teamFolderId, file)) {
                         final String mimeType = getFileMimeType(in, file);
                         final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
                         if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
@@ -306,7 +306,7 @@ public class DropboxDataStore extends AbstractDataStore {
             }
 
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
-                final Object convertValue = convertValue(entry.getValue(), resultMap);
+                final Object convertValue = convertValue(getScriptType(paramMap), entry.getValue(), resultMap);
                 if (convertValue != null) {
                     dataMap.put(entry.getKey(), convertValue);
                 }

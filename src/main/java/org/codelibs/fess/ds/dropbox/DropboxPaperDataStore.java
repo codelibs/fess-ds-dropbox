@@ -104,11 +104,11 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 final String memberId = member.getProfile().getTeamMemberId();
                 final List<String> roles = Collections.singletonList(getMemberRole(member));
                 try {
-                    client.getMemberPaperIds(memberId, docId -> executorService.execute(
-                            () -> storePaper(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, docId,
-                                    roles)));
-                    client.getMemberFiles(memberId, "", true, metadata -> executorService.execute(
-                            () -> storePaperFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, memberId, null, null,
+                    client.getMemberPaperIds(memberId, docId -> executorService.execute(() -> storePaper(dataConfig, callback, paramMap,
+                            scriptMap, defaultDataMap, config, client, memberId, docId, roles)));
+                    client.getMemberFiles(memberId, "", true,
+                            metadata -> executorService.execute(() -> storePaperFile(dataConfig, callback, paramMap, scriptMap,
+                                    defaultDataMap, config, client, memberId, null, null,
                                     "/" + member.getProfile().getName().getDisplayName() + metadata.getPathDisplay(), metadata, roles)));
                 } catch (final DbxException e) {
                     logger.debug("Failed to crawl member papers: {}", memberId, e);
@@ -168,7 +168,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             }
 
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
-                final Object convertValue = convertValue(entry.getValue(), resultMap);
+                final Object convertValue = convertValue(getScriptType(paramMap), entry.getValue(), resultMap);
                 if (convertValue != null) {
                     dataMap.put(entry.getKey(), convertValue);
                 }
@@ -207,9 +207,9 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     }
 
     protected void storePaperFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
-                             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
-                             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
-                             final List<String> roles) {
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
+            final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
+            final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
             final String url = getUrlFromPath(path);
@@ -241,7 +241,6 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             paperMap.put(PAPER_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
-
             resultMap.put(PAPER, paperMap);
 
             if (logger.isDebugEnabled()) {
@@ -249,7 +248,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             }
 
             for (final Map.Entry<String, String> entry : scriptMap.entrySet()) {
-                final Object convertValue = convertValue(entry.getValue(), resultMap);
+                final Object convertValue = convertValue(getScriptType(paramMap), entry.getValue(), resultMap);
                 if (convertValue != null) {
                     dataMap.put(entry.getKey(), convertValue);
                 }
