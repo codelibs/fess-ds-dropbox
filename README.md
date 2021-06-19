@@ -1,4 +1,5 @@
-Dropbox Data Store for Fess [![Build Status](https://travis-ci.org/codelibs/fess-ds-dropbox.svg?branch=master)](https://travis-ci.org/codelibs/fess-ds-dropbox)
+Dropbox Data Store for Fess
+[![Java CI with Maven](https://github.com/codelibs/fess-ds-dropbox/actions/workflows/maven.yml/badge.svg)](https://github.com/codelibs/fess-ds-dropbox/actions/workflows/maven.yml)
 ==========================
 
 ## Overview
