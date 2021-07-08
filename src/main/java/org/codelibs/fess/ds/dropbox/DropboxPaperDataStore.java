@@ -15,11 +15,22 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxDownloader;
-import com.dropbox.core.DbxException;
-import com.dropbox.core.v2.files.Metadata;
-import com.dropbox.core.v2.paper.PaperDocExportResult;
-import com.dropbox.core.v2.team.TeamMemberInfo;
+import static org.codelibs.fess.ds.dropbox.DropboxDataStore.DEFAULT_PERMISSIONS;
+import static org.codelibs.fess.ds.dropbox.DropboxDataStore.NUMBER_OF_THREADS;
+
+import java.io.InputStream;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
 import org.apache.http.client.utils.URIBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
@@ -33,21 +44,17 @@ import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.dropbox.DropboxDataStore.Config;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.util.ComponentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.InputStream;
-import java.net.URISyntaxException;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-
-import static org.codelibs.fess.ds.dropbox.DropboxDataStore.DEFAULT_PERMISSIONS;
-import static org.codelibs.fess.ds.dropbox.DropboxDataStore.NUMBER_OF_THREADS;
+import com.dropbox.core.DbxDownloader;
+import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.paper.PaperDocExportResult;
+import com.dropbox.core.v2.team.TeamMemberInfo;
 
 public class DropboxPaperDataStore extends AbstractDataStore {
 
@@ -67,6 +74,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     // other
     protected String extractorName = "tikaExtractor";
 
+    @Override
     protected String getName() {
         return this.getClass().getSimpleName();
     }
@@ -85,9 +93,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Interrupted.", e);
-            }
+            throw new DataStoreException("Interrupted.", e);
         } finally {
             executorService.shutdown();
         }
@@ -154,8 +160,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
 
             // TODO permissions
             // final List<String> permissions = getPaperPermissions(client, memberId, docId);
-            final List<String> permissions = new ArrayList<>();
-            permissions.addAll(roles);
+            final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
@@ -235,8 +240,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
 
             // TODO permissions
             // final List<String> permissions = getFilePermissions(client, metadata);
-            final List<String> permissions = new ArrayList<>();
-            permissions.addAll(roles);
+            final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
@@ -310,9 +314,8 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             if (ignoreError) {
                 logger.warn("Failed to get paper contents: " + url, e);
                 return StringUtil.EMPTY;
-            } else {
-                throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
             }
+            throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
         }
     }
 

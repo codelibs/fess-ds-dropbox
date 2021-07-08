@@ -15,11 +15,23 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxException;
-import com.dropbox.core.v2.files.FileMetadata;
-import com.dropbox.core.v2.files.FolderMetadata;
-import com.dropbox.core.v2.files.Metadata;
-import com.dropbox.core.v2.team.TeamMemberInfo;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URISyntaxException;
+import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.http.client.utils.URIBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
@@ -34,22 +46,18 @@ import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.util.ComponentUtil;
 import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URISyntaxException;
-import java.net.URLConnection;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.files.FolderMetadata;
+import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.team.TeamMemberInfo;
 
 public class DropboxDataStore extends AbstractDataStore {
 
@@ -105,6 +113,7 @@ public class DropboxDataStore extends AbstractDataStore {
     // other
     protected String extractorName = "tikaExtractor";
 
+    @Override
     protected String getName() {
         return this.getClass().getSimpleName();
     }
@@ -130,9 +139,7 @@ public class DropboxDataStore extends AbstractDataStore {
             }
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Interrupted.", e);
-            }
+            throw new DataStoreException("Interrupted.", e);
         } finally {
             executorService.shutdown();
         }
@@ -175,17 +182,15 @@ public class DropboxDataStore extends AbstractDataStore {
                         if (metadata instanceof FileMetadata) {
                             executorService.execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
                                     client, null, adminId, teamFolderId, metadata.getPathDisplay(), metadata, roles));
-                        } else if (metadata instanceof FolderMetadata) {
-                            if (members.stream()
-                                    .noneMatch(member -> member.getProfile().getName().getDisplayName().equals(metadata.getName()))) {
-                                try {
-                                    client.getTeamFiles(adminId, teamFolderId, metadata.getPathDisplay(), true,
-                                            meta -> executorService.execute(
-                                                    () -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
-                                                            client, null, adminId, teamFolderId, meta.getPathDisplay(), meta, roles)));
-                                } catch (final DbxException e) {
-                                    logger.debug("Failed to get team files.", e);
-                                }
+                        } else if ((metadata instanceof FolderMetadata) && members.stream()
+                                .noneMatch(member -> member.getProfile().getName().getDisplayName().equals(metadata.getName()))) {
+                            try {
+                                client.getTeamFiles(adminId, teamFolderId, metadata.getPathDisplay(), true,
+                                        meta -> executorService
+                                                .execute(() -> storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config,
+                                                        client, null, adminId, teamFolderId, meta.getPathDisplay(), meta, roles)));
+                            } catch (final DbxException e) {
+                                logger.debug("Failed to get team files.", e);
                             }
                         }
                     });
@@ -223,8 +228,7 @@ public class DropboxDataStore extends AbstractDataStore {
 
             // TODO permissions
             // final List<String> permissions = getFilePermissions(client, metadata);
-            final List<String> permissions = new ArrayList<>();
-            permissions.addAll(roles);
+            final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
@@ -262,9 +266,8 @@ public class DropboxDataStore extends AbstractDataStore {
                         if (config.ignoreError) {
                             logger.warn("Failed to download " + file.getName() + " by " + e.getMessage());
                             return;
-                        } else {
-                            throw new DataStoreCrawlingException(url, "Failed to download " + file.getName(), e);
                         }
+                        throw new DataStoreCrawlingException(url, "Failed to download " + file.getName(), e);
                     }
                 } else {
                     fileMap.put(FILE_EXPORT_INFO, file.getExportInfo()); // ExportInfo
@@ -377,9 +380,8 @@ public class DropboxDataStore extends AbstractDataStore {
             if (ignoreError) {
                 logger.warn("Failed to get contents: " + file.getName(), e);
                 return StringUtil.EMPTY;
-            } else {
-                throw new DataStoreCrawlingException(url, "Failed to get contents: " + file.getName(), e);
             }
+            throw new DataStoreCrawlingException(url, "Failed to get contents: " + file.getName(), e);
         }
     }
 
@@ -425,11 +427,11 @@ public class DropboxDataStore extends AbstractDataStore {
         }
 
         private boolean isIgnoreFolder(final Map<String, String> paramMap) {
-            return paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+            return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE));
         }
 
         private boolean isIgnoreError(final Map<String, String> paramMap) {
-            return paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE).equalsIgnoreCase(Constants.TRUE);
+            return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE));
         }
 
         private String[] getSupportedMimeTypes(final Map<String, String> paramMap) {

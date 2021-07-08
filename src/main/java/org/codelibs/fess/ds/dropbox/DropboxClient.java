@@ -15,6 +15,22 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+
+import org.apache.commons.io.output.DeferredFileOutputStream;
+import org.apache.commons.lang3.SystemUtils;
+import org.codelibs.core.lang.StringUtil;
+import org.codelibs.fess.crawler.exception.CrawlingAccessException;
+import org.codelibs.fess.crawler.util.TemporaryFileInputStream;
+import org.codelibs.fess.exception.DataStoreException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
@@ -31,21 +47,6 @@ import com.dropbox.core.v2.team.AdminTier;
 import com.dropbox.core.v2.team.TeamFolderListResult;
 import com.dropbox.core.v2.team.TeamFolderMetadata;
 import com.dropbox.core.v2.team.TeamMemberInfo;
-import org.apache.commons.io.output.DeferredFileOutputStream;
-import org.apache.commons.lang3.SystemUtils;
-import org.codelibs.core.lang.StringUtil;
-import org.codelibs.fess.crawler.exception.CrawlingAccessException;
-import org.codelibs.fess.crawler.util.TemporaryFileInputStream;
-import org.codelibs.fess.exception.DataStoreException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 public class DropboxClient {
 
@@ -98,11 +99,9 @@ public class DropboxClient {
                         // process only paper files (DropboxPaperDataStore)
                         consumer.accept(file);
                     }
-                } else {
-                    if (!file.getName().endsWith(".paper")) {
-                        // process files except paper files (DropboxDataStore)
-                        consumer.accept(file);
-                    }
+                } else if (!file.getName().endsWith(".paper")) {
+                    // process files except paper files (DropboxDataStore)
+                    consumer.accept(file);
                 }
             }
             if (!listFolderResult.getHasMore()) {
@@ -159,9 +158,8 @@ public class DropboxClient {
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());
-            } else {
-                return new TemporaryFileInputStream(dfos.getFile());
             }
+            return new TemporaryFileInputStream(dfos.getFile());
         } catch (final IOException e) {
             throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
         }
@@ -175,9 +173,8 @@ public class DropboxClient {
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());
-            } else {
-                return new TemporaryFileInputStream(dfos.getFile());
             }
+            return new TemporaryFileInputStream(dfos.getFile());
         } catch (final IOException e) {
             throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
         }
