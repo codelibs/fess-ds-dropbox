@@ -15,14 +15,14 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import com.dropbox.core.DbxException;
-import com.dropbox.core.v2.files.FileMetadata;
+import java.nio.charset.StandardCharsets;
+
 import org.apache.commons.io.IOUtils;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import com.dropbox.core.DbxException;
+import com.dropbox.core.v2.files.FileMetadata;
 
 public class DropboxClientTest extends LastaFluteTestCase {
 
@@ -58,14 +58,14 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     private void getMembers() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         client.getMembers(info -> System.out.println(info.getProfile().getName().getDisplayName()));
     }
 
     private void getMemberFiles() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         client.getMembers(info -> {
@@ -80,7 +80,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     private void getTeamFiles() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         final String adminId = client.getAdmin().getProfile().getTeamMemberId();
@@ -94,7 +94,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     private void getMemberPaperIds() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         client.getMembers(info -> {
@@ -108,7 +108,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     private void getFileInputStream() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         client.getMembers(info -> {
@@ -136,7 +136,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     private void getTeamFileInputStream() throws DbxException {
-        final Map<String, String> params = new HashMap<>();
+        final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         final String adminId = client.getAdmin().getProfile().getTeamMemberId();

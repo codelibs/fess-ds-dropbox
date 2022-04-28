@@ -44,10 +44,14 @@ import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
+import org.codelibs.fess.helper.CrawlerStatsHelper;
 import org.codelibs.fess.helper.PermissionHelper;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsAction;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
 import org.codelibs.fess.util.ComponentUtil;
 import org.lastaflute.di.core.exception.ComponentNotFoundException;
 import org.slf4j.Logger;
@@ -119,25 +123,23 @@ public class DropboxDataStore extends AbstractDataStore {
     }
 
     @Override
-    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
         final Config config = new Config(paramMap);
         if (logger.isDebugEnabled()) {
             logger.debug("config: {}", config);
         }
         final ExecutorService executorService =
-                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
+                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
 
         try {
             final DropboxClient client = createClient(paramMap);
-            try {
-                final List<TeamMemberInfo> members = client.getMembers();
-                crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
-                crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
-            } catch (final DbxException e) {
-                e.printStackTrace();
-            }
+            final List<TeamMemberInfo> members = client.getMembers();
+            crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
+            crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
             executorService.awaitTermination(60, TimeUnit.SECONDS);
+        } catch (final DbxException e) {
+            throw new DataStoreException("Dropbox exception occurs.", e);
         } catch (final InterruptedException e) {
             throw new DataStoreException("Interrupted.", e);
         } finally {
@@ -145,7 +147,7 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected void crawlMemberFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void crawlMemberFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client, final List<TeamMemberInfo> members) {
         if (logger.isDebugEnabled()) {
@@ -165,7 +167,7 @@ public class DropboxDataStore extends AbstractDataStore {
         });
     }
 
-    protected void crawlTeamFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void crawlTeamFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client, final List<TeamMemberInfo> members) {
         if (logger.isDebugEnabled()) {
@@ -203,12 +205,15 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
-    protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
             final List<String> roles) {
+        final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
+        final StatsKeyObject statsKey = new StatsKeyObject(path);
         try {
+            crawlerStatsHelper.begin(statsKey);
             final String url = getUrl(path);
 
             final UrlFilter urlFilter = config.urlFilter;
@@ -216,10 +221,11 @@ public class DropboxDataStore extends AbstractDataStore {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Not matched: {}", url);
                 }
+                crawlerStatsHelper.discard(statsKey);
                 return;
             }
 
-            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> fileMap = new HashMap<>();
 
             logger.info("Crawling URL: {}", url);
@@ -230,7 +236,7 @@ public class DropboxDataStore extends AbstractDataStore {
             // final List<String> permissions = getFilePermissions(client, metadata);
             final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+            StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS, StringUtil.EMPTY), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             fileMap.put(FILE_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
@@ -239,9 +245,7 @@ public class DropboxDataStore extends AbstractDataStore {
             fileMap.put(FILE_PATH_DISPLAY, metadata.getPathDisplay());
             fileMap.put(FILE_PARENT_SHARED_FOLDER_ID, metadata.getParentSharedFolderId());
 
-            if (metadata instanceof FileMetadata) {
-                final FileMetadata file = (FileMetadata) metadata;
-
+            if (metadata instanceof FileMetadata file) {
                 if (file.getSize() > config.maxSize) {
                     throw new MaxLengthExceededException(
                             "The content length (" + file.getSize() + " byte) is over " + config.maxSize + " byte. The url is " + url);
@@ -285,9 +289,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 fileMap.put(FILE_SERVER_MODIFIED, file.getServerModified());
                 fileMap.put(FILE_SIZE, file.getSize());
                 fileMap.put(FILE_SYMLINK_INFO, file.getSymlinkInfo()); // SymlinkInfo
-            } else if (metadata instanceof FolderMetadata) {
-                final FolderMetadata folder = (FolderMetadata) metadata;
-
+            } else if (metadata instanceof FolderMetadata folder) {
                 if (config.ignoreFolder) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Ignore item: {}", metadata.getName());
@@ -304,6 +306,8 @@ public class DropboxDataStore extends AbstractDataStore {
 
             resultMap.put(FILE, fileMap);
 
+            crawlerStatsHelper.record(statsKey, StatsAction.PREPARED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("fileMap: {}", fileMap);
             }
@@ -315,11 +319,15 @@ public class DropboxDataStore extends AbstractDataStore {
                     dataMap.put(entry.getKey(), convertValue);
                 }
             }
+
+            crawlerStatsHelper.record(statsKey, StatsAction.EVALUATED);
+
             if (logger.isDebugEnabled()) {
                 logger.debug("dataMap: {}", dataMap);
             }
 
             callback.store(paramMap, dataMap);
+            crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : " + dataMap, e);
 
@@ -341,10 +349,14 @@ public class DropboxDataStore extends AbstractDataStore {
 
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, errorName, "", target);
+            crawlerStatsHelper.record(statsKey, StatsAction.ACCESS_EXCEPTION);
         } catch (final Throwable t) {
             logger.warn("Crawling Access Exception at : " + dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), "", t);
+            crawlerStatsHelper.record(statsKey, StatsAction.EXCEPTION);
+        } finally {
+            crawlerStatsHelper.done(statsKey);
         }
     }
 
@@ -389,7 +401,7 @@ public class DropboxDataStore extends AbstractDataStore {
         return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
     }
 
-    protected DropboxClient createClient(final Map<String, String> paramMap) {
+    protected DropboxClient createClient(final DataStoreParams paramMap) {
         return new DropboxClient(paramMap);
     }
 
@@ -400,7 +412,7 @@ public class DropboxDataStore extends AbstractDataStore {
         final String[] supportedMimeTypes;
         final UrlFilter urlFilter;
 
-        Config(final Map<String, String> paramMap) {
+        Config(final DataStoreParams paramMap) {
             fields = getFields(paramMap);
             maxSize = getMaxSize(paramMap);
             ignoreFolder = isIgnoreFolder(paramMap);
@@ -409,16 +421,16 @@ public class DropboxDataStore extends AbstractDataStore {
             urlFilter = getUrlFilter(paramMap);
         }
 
-        private String[] getFields(final Map<String, String> paramMap) {
-            final String value = paramMap.get(FIELDS);
+        private String[] getFields(final DataStoreParams paramMap) {
+            final String value = paramMap.getAsString(FIELDS);
             if (value != null) {
                 return StreamUtil.split(value, ",").get(stream -> stream.map(String::trim).toArray(String[]::new));
             }
             return null;
         }
 
-        private long getMaxSize(final Map<String, String> paramMap) {
-            final String value = paramMap.get(MAX_SIZE);
+        private long getMaxSize(final DataStoreParams paramMap) {
+            final String value = paramMap.getAsString(MAX_SIZE);
             try {
                 return StringUtil.isNotBlank(value) ? Long.parseLong(value) : DEFAULT_MAX_SIZE;
             } catch (final NumberFormatException e) {
@@ -426,35 +438,35 @@ public class DropboxDataStore extends AbstractDataStore {
             }
         }
 
-        private boolean isIgnoreFolder(final Map<String, String> paramMap) {
-            return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_FOLDER, Constants.TRUE));
+        private boolean isIgnoreFolder(final DataStoreParams paramMap) {
+            return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_FOLDER, Constants.TRUE));
         }
 
-        private boolean isIgnoreError(final Map<String, String> paramMap) {
-            return Constants.TRUE.equalsIgnoreCase(paramMap.getOrDefault(IGNORE_ERROR, Constants.TRUE));
+        private boolean isIgnoreError(final DataStoreParams paramMap) {
+            return Constants.TRUE.equalsIgnoreCase(paramMap.getAsString(IGNORE_ERROR, Constants.TRUE));
         }
 
-        private String[] getSupportedMimeTypes(final Map<String, String> paramMap) {
-            return StreamUtil.split(paramMap.getOrDefault(SUPPORTED_MIMETYPES, ".*"), ",")
+        private String[] getSupportedMimeTypes(final DataStoreParams paramMap) {
+            return StreamUtil.split(paramMap.getAsString(SUPPORTED_MIMETYPES, ".*"), ",")
                     .get(stream -> stream.map(String::trim).toArray(String[]::new));
         }
 
-        private UrlFilter getUrlFilter(final Map<String, String> paramMap) {
+        private UrlFilter getUrlFilter(final DataStoreParams paramMap) {
             final UrlFilter urlFilter;
             try {
                 urlFilter = ComponentUtil.getComponent(UrlFilter.class);
             } catch (final ComponentNotFoundException e) {
                 return null;
             }
-            final String include = paramMap.get(INCLUDE_PATTERN);
+            final String include = paramMap.getAsString(INCLUDE_PATTERN);
             if (StringUtil.isNotBlank(include)) {
                 urlFilter.addInclude(include);
             }
-            final String exclude = paramMap.get(EXCLUDE_PATTERN);
+            final String exclude = paramMap.getAsString(EXCLUDE_PATTERN);
             if (StringUtil.isNotBlank(exclude)) {
                 urlFilter.addExclude(exclude);
             }
-            urlFilter.init(paramMap.get(Constants.CRAWLING_INFO_ID));
+            urlFilter.init(paramMap.getAsString(Constants.CRAWLING_INFO_ID));
             if (logger.isDebugEnabled()) {
                 logger.debug("urlFilter: {}", urlFilter);
             }

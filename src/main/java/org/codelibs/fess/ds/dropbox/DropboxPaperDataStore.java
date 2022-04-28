@@ -42,6 +42,7 @@ import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.ds.dropbox.DropboxDataStore.Config;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.es.config.exentity.DataConfig;
 import org.codelibs.fess.exception.DataStoreCrawlingException;
 import org.codelibs.fess.exception.DataStoreException;
@@ -80,14 +81,14 @@ public class DropboxPaperDataStore extends AbstractDataStore {
     }
 
     @Override
-    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storeData(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap) {
         final Config config = new Config(paramMap);
         if (logger.isDebugEnabled()) {
             logger.debug("config: {}", config);
         }
         final ExecutorService executorService =
-                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getOrDefault(NUMBER_OF_THREADS, "1")));
+                Executors.newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
         try {
             final DropboxClient client = createClient(paramMap);
             crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
@@ -99,7 +100,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
-    protected void crawlMemberPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void crawlMemberPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Config config, final DropboxClient client) {
         if (logger.isDebugEnabled()) {
@@ -125,12 +126,12 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
-    protected void storePaper(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storePaper(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String docId, final List<String> roles) {
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         try {
-            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> paperMap = new HashMap<>();
 
             final String url = getUrlFromId(docId);
@@ -162,7 +163,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             // final List<String> permissions = getPaperPermissions(client, memberId, docId);
             final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+            StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS, StringUtil.EMPTY), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             paperMap.put(PAPER_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
@@ -212,7 +213,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
-    protected void storePaperFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final Map<String, String> paramMap,
+    protected void storePaperFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
             final List<String> roles) {
@@ -228,7 +229,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 return;
             }
 
-            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap);
+            final Map<String, Object> resultMap = new LinkedHashMap<>(paramMap.asMap());
             final Map<String, Object> paperMap = new HashMap<>();
 
             logger.info("Crawling URL: {}", url);
@@ -242,7 +243,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             // final List<String> permissions = getFilePermissions(client, metadata);
             final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
-            StreamUtil.split(paramMap.get(DEFAULT_PERMISSIONS), ",")
+            StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS, StringUtil.EMPTY), ",")
                     .of(stream -> stream.filter(StringUtil::isNotBlank).map(permissionHelper::encode).forEach(permissions::add));
             paperMap.put(PAPER_ROLES, permissions.stream().distinct().collect(Collectors.toList()));
 
@@ -323,7 +324,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
     }
 
-    protected DropboxClient createClient(final Map<String, String> paramMap) {
+    protected DropboxClient createClient(final DataStoreParams paramMap) {
         return new DropboxClient(paramMap);
     }
 

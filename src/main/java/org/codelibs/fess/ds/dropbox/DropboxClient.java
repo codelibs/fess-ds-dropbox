@@ -19,7 +19,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 import org.apache.commons.io.output.DeferredFileOutputStream;
@@ -27,6 +26,7 @@ import org.apache.commons.lang3.SystemUtils;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.util.TemporaryFileInputStream;
+import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,14 +60,14 @@ public class DropboxClient {
 
     protected DbxRequestConfig config;
     protected DbxTeamClientV2 client;
-    protected Map<String, String> params;
+    protected DataStoreParams params;
 
     protected int maxCachedContentSize = 1024 * 1024;
 
-    public DropboxClient(final Map<String, String> params) {
+    public DropboxClient(final DataStoreParams params) {
         this.params = params;
 
-        final String accessToken = params.getOrDefault(ACCESS_TOKEN, StringUtil.EMPTY);
+        final String accessToken = params.getAsString(ACCESS_TOKEN, StringUtil.EMPTY);
         if (StringUtil.isBlank(accessToken)) {
             throw new DataStoreException("Parameter '" + ACCESS_TOKEN + "' is required");
         }
@@ -75,7 +75,7 @@ public class DropboxClient {
         this.config = new DbxRequestConfig("fess");
         this.client = new DbxTeamClientV2(config, accessToken);
 
-        final String size = params.get(MAX_CACHED_CONTENT_SIZE);
+        final String size = params.getAsString(MAX_CACHED_CONTENT_SIZE);
         if (StringUtil.isNotBlank(size)) {
             maxCachedContentSize = Integer.parseInt(size);
         }
