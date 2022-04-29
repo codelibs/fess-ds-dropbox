@@ -212,6 +212,7 @@ public class DropboxDataStore extends AbstractDataStore {
         final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final StatsKeyObject statsKey = new StatsKeyObject(path);
+        paramMap.put(Constants.CRAWLER_STATS_KEY, statsKey);
         try {
             crawlerStatsHelper.begin(statsKey);
             final String url = getUrl(path);
@@ -268,7 +269,7 @@ public class DropboxDataStore extends AbstractDataStore {
                         fileMap.put(FILE_FILETYPE, fileType);
                     } catch (final DbxException e) {
                         if (config.ignoreError) {
-                            logger.warn("Failed to download " + file.getName() + " by " + e.getMessage());
+                            logger.warn("Failed to download {} by {}", file.getName(), e.getMessage());
                             return;
                         }
                         throw new DataStoreCrawlingException(url, "Failed to download " + file.getName(), e);
@@ -326,14 +327,18 @@ public class DropboxDataStore extends AbstractDataStore {
                 logger.debug("dataMap: {}", dataMap);
             }
 
+            if (dataMap.get("url") instanceof String statsUrl) {
+                statsKey.setUrl(statsUrl);
+            }
+
             callback.store(paramMap, dataMap);
             crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
-            logger.warn("Crawling Access Exception at : " + dataMap, e);
+            logger.warn("Crawling Access Exception at : {}", dataMap, e);
 
             Throwable target = e;
-            if (target instanceof MultipleCrawlingAccessException) {
-                final Throwable[] causes = ((MultipleCrawlingAccessException) target).getCauses();
+            if (target instanceof MultipleCrawlingAccessException ex) {
+                final Throwable[] causes = ex.getCauses();
                 if (causes.length > 0) {
                     target = causes[causes.length - 1];
                 }
@@ -351,7 +356,7 @@ public class DropboxDataStore extends AbstractDataStore {
             failureUrlService.store(dataConfig, errorName, "", target);
             crawlerStatsHelper.record(statsKey, StatsAction.ACCESS_EXCEPTION);
         } catch (final Throwable t) {
-            logger.warn("Crawling Access Exception at : " + dataMap, t);
+            logger.warn("Crawling Access Exception at : {}", dataMap, t);
             final FailureUrlService failureUrlService = ComponentUtil.getComponent(FailureUrlService.class);
             failureUrlService.store(dataConfig, t.getClass().getCanonicalName(), "", t);
             crawlerStatsHelper.record(statsKey, StatsAction.EXCEPTION);
@@ -371,7 +376,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 return mimeType;
             }
         } catch (final IOException e) {
-            logger.warn("Failed to get file mime type: " + file.getName(), e);
+            logger.warn("Failed to get file mime type: {}", file.getName(), e);
         }
         final String mimeType = URLConnection.guessContentTypeFromName(file.getName());
         return (mimeType != null) ? mimeType : "application/octet-stream";
@@ -390,7 +395,7 @@ public class DropboxDataStore extends AbstractDataStore {
             return extractor.getText(in, null).getContent();
         } catch (final Exception e) {
             if (ignoreError) {
-                logger.warn("Failed to get contents: " + file.getName(), e);
+                logger.warn("Failed to get contents: {}", file.getName(), e);
                 return StringUtil.EMPTY;
             }
             throw new DataStoreCrawlingException(url, "Failed to get contents: " + file.getName(), e);
