@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.http.client.utils.URIBuilder;
+import org.codelibs.core.exception.InterruptedRuntimeException;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
 import org.codelibs.fess.Constants;
@@ -141,7 +142,7 @@ public class DropboxDataStore extends AbstractDataStore {
         } catch (final DbxException e) {
             throw new DataStoreException("Dropbox exception occurs.", e);
         } catch (final InterruptedException e) {
-            throw new DataStoreException("Interrupted.", e);
+            throw new InterruptedRuntimeException(e);
         } finally {
             executorService.shutdown();
         }
