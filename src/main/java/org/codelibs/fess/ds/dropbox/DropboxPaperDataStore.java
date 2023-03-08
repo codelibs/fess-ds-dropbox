@@ -306,11 +306,15 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             return ComponentUtil.getExtractorFactory().builder(in, null).mimeType(mimeType).extractorName(extractorName).extract()
                     .getContent();
         } catch (final Exception e) {
-            if (ignoreError) {
-                logger.warn("Failed to get paper contents: {}", url, e);
-                return StringUtil.EMPTY;
+            if (!ignoreError && !ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
+                throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
             }
-            throw new DataStoreCrawlingException(url, "Failed to get paper contents", e);
+            if (logger.isDebugEnabled()) {
+                logger.warn("Failed to get paper contents: {}", url, e);
+            } else {
+                logger.warn("Failed to get paper contents: {}. {}", url, e.getMessage());
+            }
+            return StringUtil.EMPTY;
         }
     }
 
