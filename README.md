@@ -20,11 +20,13 @@ See [Plugin](https://fess.codelibs.org/13.4/admin/plugin-guide.html) of Administ
 
 ```properties
 access_token=**********
+basic_plan=false
 ```
 
-| Key | Value |
-| --- | --- |
+| Key            | Value |
+|----------------| --- |
 | *access_token* | An access token of Dropbox (Generated on [App Console](https://www.dropbox.com/developers/apps)) |
+| *basic_plan*   | This parameter is set to `true` if the target for crawling is under the Basic plan. The default value is `false`. |
 
 ### Scripts (Dropbox)
 

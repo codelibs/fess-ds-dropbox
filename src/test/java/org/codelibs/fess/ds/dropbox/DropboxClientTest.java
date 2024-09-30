@@ -120,7 +120,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
                     if (metadata instanceof FileMetadata) {
                         final FileMetadata file = (FileMetadata) metadata;
                         try {
-                            String content = IOUtils.toString(client.getFileInputStream(memberId, file), StandardCharsets.UTF_8);
+                            String content = IOUtils.toString(client.getMemberFileInputStream(memberId, file), StandardCharsets.UTF_8);
                             content = content.replaceAll("\\r\\n|\\r|\\n", "");
                             content = content.substring(0, Math.min(20, content.length()));
                             System.out.println("    " + content);

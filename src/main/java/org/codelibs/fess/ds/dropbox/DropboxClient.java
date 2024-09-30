@@ -15,9 +15,8 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -59,7 +58,8 @@ public class DropboxClient {
     protected static final String MAX_CACHED_CONTENT_SIZE = "max_cached_content_size";
 
     protected DbxRequestConfig config;
-    protected DbxTeamClientV2 client;
+    protected DbxClientV2 basicClient;
+    protected DbxTeamClientV2 teamClient;
     protected DataStoreParams params;
 
     protected int maxCachedContentSize = 1024 * 1024;
@@ -73,7 +73,8 @@ public class DropboxClient {
         }
 
         this.config = new DbxRequestConfig("fess");
-        this.client = new DbxTeamClientV2(config, accessToken);
+        this.basicClient = new DbxClientV2(config, accessToken);
+        this.teamClient = new DbxTeamClientV2(config, accessToken);
 
         final String size = params.getAsString(MAX_CACHED_CONTENT_SIZE);
         if (StringUtil.isNotBlank(size)) {
@@ -82,16 +83,16 @@ public class DropboxClient {
     }
 
     public void getMembers(final Consumer<TeamMemberInfo> consumer) throws DbxException {
-        client.team().membersList().getMembers().forEach(consumer);
+        teamClient.team().membersList().getMembers().forEach(consumer);
     }
 
     public List<TeamMemberInfo> getMembers() throws DbxException {
-        return client.team().membersList().getMembers();
+        return teamClient.team().membersList().getMembers();
     }
 
     public void getMemberFiles(final String memberId, final String path, final boolean crawlPapers, final Consumer<Metadata> consumer)
             throws DbxException {
-        ListFolderResult listFolderResult = client.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
+        ListFolderResult listFolderResult = teamClient.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
         while (true) {
             for (final Metadata file : listFolderResult.getEntries()) {
                 if (crawlPapers) {
@@ -107,29 +108,29 @@ public class DropboxClient {
             if (!listFolderResult.getHasMore()) {
                 break;
             }
-            listFolderResult = client.asMember(memberId).files().listFolderContinue(listFolderResult.getCursor());
+            listFolderResult = teamClient.asMember(memberId).files().listFolderContinue(listFolderResult.getCursor());
         }
     }
 
     public void getMemberPaperIds(final String memberId, final Consumer<String> consumer) throws DbxException {
-        ListPaperDocsResponse listPaperDocsResponse = client.asMember(memberId).paper().docsListBuilder().start();
+        ListPaperDocsResponse listPaperDocsResponse = teamClient.asMember(memberId).paper().docsListBuilder().start();
         while (true) {
             listPaperDocsResponse.getDocIds().forEach(consumer);
             if (!listPaperDocsResponse.getHasMore()) {
                 break;
             }
-            listPaperDocsResponse = client.asMember(memberId).paper().docsListContinue(listPaperDocsResponse.getCursor().getValue());
+            listPaperDocsResponse = teamClient.asMember(memberId).paper().docsListContinue(listPaperDocsResponse.getCursor().getValue());
         }
     }
 
     public void getTeamFolders(final Consumer<TeamFolderMetadata> consumer) throws DbxException {
-        TeamFolderListResult teamFolderListResult = client.team().teamFolderList();
+        TeamFolderListResult teamFolderListResult = teamClient.team().teamFolderList();
         while (true) {
             teamFolderListResult.getTeamFolders().forEach(consumer);
             if (!teamFolderListResult.getHasMore()) {
                 break;
             }
-            teamFolderListResult = client.team().teamFolderListContinue(teamFolderListResult.getCursor());
+            teamFolderListResult = teamClient.team().teamFolderListContinue(teamFolderListResult.getCursor());
         }
     }
 
@@ -139,7 +140,7 @@ public class DropboxClient {
 
     public void getTeamFiles(final String adminId, final String teamFolderId, final String path, final boolean recursive,
             final Consumer<Metadata> consumer) throws DbxException {
-        final DbxClientV2 clientV2 = client.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId));
+        final DbxClientV2 clientV2 = teamClient.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId));
         ListFolderResult listFolderResult =
                 clientV2.files().listFolderBuilder("ns:" + teamFolderId + path).withRecursive(recursive).start();
         while (true) {
@@ -151,10 +152,54 @@ public class DropboxClient {
         }
     }
 
-    public InputStream getFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
+    public void listFiles(final String path, final boolean crawlPapers, final Consumer<Metadata> consumer) throws DbxException {
+        ListFolderResult listFolderResult = basicClient.files().listFolder(path);
+        while (true) {
+            for (final Metadata file : listFolderResult.getEntries()) {
+                if (crawlPapers) {
+                    if (file.getName().endsWith(".paper")) {
+                        // process only paper files (DropboxPaperDataStore)
+                        consumer.accept(file);
+                    }
+                } else if (!file.getName().endsWith(".paper")) {
+                    // process files except paper files (DropboxDataStore)
+                    consumer.accept(file);
+                }
+            }
+            if (!listFolderResult.getHasMore()) {
+                break;
+            }
+            listFolderResult = basicClient.files().listFolderContinue(listFolderResult.getCursor());
+        }
+    }
+
+    public InputStream getFileInputStream(final FileMetadata file) throws DbxException {
+        try (final ByteArrayOutputStream dfos = new ByteArrayOutputStream()) {
+            basicClient.files().downloadBuilder(file.getPathLower()).download(dfos);
+            dfos.flush();
+            String content = dfos.toString(StandardCharsets.UTF_8);
+            logger.info("Content: " + content);
+        } catch (final IOException e) {
+            throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
+        }
+
         try (final DeferredFileOutputStream dfos =
                 new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out", SystemUtils.getJavaIoTmpDir())) {
-            client.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
+            basicClient.files().downloadBuilder(file.getPathLower()).download(dfos);
+            dfos.flush();
+            if (dfos.isInMemory()) {
+                return new ByteArrayInputStream(dfos.getData());
+            }
+            return new TemporaryFileInputStream(dfos.getFile());
+        } catch (final IOException e) {
+            throw new CrawlingAccessException("Failed to create an input stream from " + file.getId(), e);
+        }
+    }
+
+    public InputStream getMemberFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
+        try (final DeferredFileOutputStream dfos =
+                new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out", SystemUtils.getJavaIoTmpDir())) {
+            teamClient.asMember(memberId).files().download(file.getPathDisplay()).download(dfos);
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());
@@ -169,7 +214,8 @@ public class DropboxClient {
             throws DbxException {
         try (final DeferredFileOutputStream dfos =
                 new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out", SystemUtils.getJavaIoTmpDir())) {
-            client.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId)).files().download(file.getPathDisplay()).download(dfos);
+            teamClient.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId)).files().download(file.getPathDisplay())
+                    .download(dfos);
             dfos.flush();
             if (dfos.isInMemory()) {
                 return new ByteArrayInputStream(dfos.getData());
@@ -181,11 +227,11 @@ public class DropboxClient {
     }
 
     public DbxDownloader<PaperDocExportResult> getPaperDownloader(final String memberId, final String docId) throws DbxException {
-        return client.asMember(memberId).paper().docsDownload(docId, ExportFormat.MARKDOWN);
+        return teamClient.asMember(memberId).paper().docsDownload(docId, ExportFormat.MARKDOWN);
     }
 
     public TeamMemberInfo getAdmin() throws DbxException {
-        return getAdmin(client.team().membersList().getMembers());
+        return getAdmin(teamClient.team().membersList().getMembers());
     }
 
     public TeamMemberInfo getAdmin(final List<TeamMemberInfo> members) {

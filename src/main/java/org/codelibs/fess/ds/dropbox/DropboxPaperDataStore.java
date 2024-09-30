@@ -31,6 +31,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.files.FolderMetadata;
 import org.apache.http.client.utils.URIBuilder;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.stream.StreamUtil;
@@ -60,6 +62,9 @@ import com.dropbox.core.v2.team.TeamMemberInfo;
 public class DropboxPaperDataStore extends AbstractDataStore {
 
     private static final Logger logger = LoggerFactory.getLogger(DropboxPaperDataStore.class);
+
+    // parameters
+    protected static final String BASIC_PLAN = "basic_plan";
 
     // scripts
     protected static final String PAPER = "paper";
@@ -91,7 +96,12 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 Executors.newFixedThreadPool(Integer.parseInt(paramMap.getAsString(NUMBER_OF_THREADS, "1")));
         try {
             final DropboxClient client = createClient(paramMap);
-            crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
+            final Boolean isBasicPlan = Boolean.parseBoolean(paramMap.getAsString(BASIC_PLAN, "false"));
+            if (isBasicPlan) {
+                crawlBasicPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client, "");
+            } else {
+                crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
+            }
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
             throw new DataStoreException("Interrupted.", e);
@@ -123,6 +133,32 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             });
         } catch (final DbxException e) {
             logger.debug("Failed to crawl member papers.", e);
+        }
+    }
+
+    protected void crawlBasicPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
+            final Config config, final DropboxClient client, final String path) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Crawling files.");
+        }
+
+        try {
+            client.listFiles(path, true, metadata -> {
+                if (metadata instanceof FileMetadata) {
+                    executorService.execute(() -> {
+                        storePaperFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, null, null, null,
+                                metadata.getPathLower(), metadata, Collections.emptyList());
+                    });
+                } else if (metadata instanceof FolderMetadata) {
+                    crawlBasicPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client,
+                            metadata.getPathLower());
+                } else {
+                    logger.warn("Unexpected metadata: {}", metadata);
+                }
+            });
+        } catch (DbxException e) {
+            logger.warn("Failed to list files. path={}", path, e);
         }
     }
 

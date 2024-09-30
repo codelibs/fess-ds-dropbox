@@ -41,7 +41,6 @@ import org.codelibs.fess.app.service.FailureUrlService;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.exception.MaxLengthExceededException;
 import org.codelibs.fess.crawler.exception.MultipleCrawlingAccessException;
-import org.codelibs.fess.crawler.extractor.Extractor;
 import org.codelibs.fess.crawler.filter.UrlFilter;
 import org.codelibs.fess.ds.AbstractDataStore;
 import org.codelibs.fess.ds.callback.IndexUpdateCallback;
@@ -71,6 +70,7 @@ public class DropboxDataStore extends AbstractDataStore {
     protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
 
     // parameters
+    protected static final String BASIC_PLAN = "basic_plan";
     protected static final String FIELDS = "fields";
     protected static final String MAX_SIZE = "max_size";
     protected static final String IGNORE_FOLDER = "ignore_folder";
@@ -135,9 +135,14 @@ public class DropboxDataStore extends AbstractDataStore {
 
         try {
             final DropboxClient client = createClient(paramMap);
-            final List<TeamMemberInfo> members = client.getMembers();
-            crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
-            crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
+            final Boolean isBasicPlan = Boolean.parseBoolean(paramMap.getAsString(BASIC_PLAN, "false"));
+            if (isBasicPlan) {
+                crawlBasicFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, "");
+            } else {
+                final List<TeamMemberInfo> members = client.getMembers();
+                crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
+                crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
+            }
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final DbxException e) {
             throw new DataStoreException("Dropbox exception occurs.", e);
@@ -145,6 +150,32 @@ public class DropboxDataStore extends AbstractDataStore {
             throw new InterruptedRuntimeException(e);
         } finally {
             executorService.shutdown();
+        }
+    }
+
+    protected void crawlBasicFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
+            final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
+            final ExecutorService executorService, final DropboxClient client, final String path) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Crawling files.");
+        }
+
+        try {
+            client.listFiles(path, false, metadata -> {
+                if (metadata instanceof FileMetadata) {
+                    executorService.execute(() -> {
+                        storeFile(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, client, null, null, null,
+                                metadata.getPathLower(), metadata, Collections.emptyList());
+                    });
+                } else if (metadata instanceof FolderMetadata) {
+                    crawlBasicFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client,
+                            metadata.getPathLower());
+                } else {
+                    logger.warn("Unexpected metadata: {}", metadata);
+                }
+            });
+        } catch (DbxException e) {
+            logger.warn("Failed to list files. path={}", path, e);
         }
     }
 
@@ -254,8 +285,9 @@ public class DropboxDataStore extends AbstractDataStore {
                 }
 
                 if (file.getIsDownloadable()) {
-                    try (final InputStream in = (memberId != null) ? client.getFileInputStream(memberId, file)
-                            : client.getTeamFileInputStream(adminId, teamFolderId, file)) {
+                    try (final InputStream in = (memberId != null) ? client.getMemberFileInputStream(memberId, file)
+                            : adminId != null ? client.getTeamFileInputStream(adminId, teamFolderId, file)
+                                    : client.getFileInputStream(file)) {
                         final String mimeType = getFileMimeType(in, file);
                         final String fileType = ComponentUtil.getFileTypeHelper().get(mimeType);
                         if (Stream.of(config.supportedMimeTypes).noneMatch(mimeType::matches)) {
