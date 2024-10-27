@@ -15,7 +15,11 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Consumer;
