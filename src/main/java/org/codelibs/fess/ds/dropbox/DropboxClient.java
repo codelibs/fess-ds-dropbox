@@ -16,23 +16,22 @@
 package org.codelibs.fess.ds.dropbox;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
-
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Consumer;
 
 import org.apache.commons.io.output.DeferredFileOutputStream;
 import org.apache.commons.lang3.SystemUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.crawler.exception.CrawlingAccessException;
 import org.codelibs.fess.crawler.util.TemporaryFileInputStream;
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
@@ -53,7 +52,7 @@ import com.dropbox.core.v2.team.TeamMemberInfo;
 
 public class DropboxClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(DropboxClient.class);
+    private static final Logger logger = LogManager.getLogger(DropboxClient.class);
 
     protected static final String APP_KEY = "app_key";
     protected static final String APP_SECRET = "app_secret";
