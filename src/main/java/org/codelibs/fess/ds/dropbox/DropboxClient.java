@@ -20,9 +20,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import com.dropbox.core.v2.files.*;
+import com.dropbox.core.v2.sharing.SharedFileMembers;
+import com.dropbox.core.v2.sharing.UserMembershipInfo;
 import org.apache.commons.io.output.DeferredFileOutputStream;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.logging.log4j.LogManager;
@@ -39,9 +43,6 @@ import com.dropbox.core.DbxRequestConfig;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.DbxTeamClientV2;
 import com.dropbox.core.v2.common.PathRoot;
-import com.dropbox.core.v2.files.FileMetadata;
-import com.dropbox.core.v2.files.ListFolderResult;
-import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.paper.ExportFormat;
 import com.dropbox.core.v2.paper.ListPaperDocsResponse;
 import com.dropbox.core.v2.paper.PaperDocExportResult;
@@ -160,7 +161,9 @@ public class DropboxClient {
         while (true) {
             for (final Metadata file : listFolderResult.getEntries()) {
                 if (crawlPapers) {
-                    if (file.getName().endsWith(".paper")) {
+                    if (file instanceof FolderMetadata) {
+                        consumer.accept(file);
+                    } else if (file.getName().endsWith(".paper")) {
                         // process only paper files (DropboxPaperDataStore)
                         consumer.accept(file);
                     }
@@ -233,6 +236,16 @@ public class DropboxClient {
         return teamClient.asMember(memberId).paper().docsDownload(docId, ExportFormat.MARKDOWN);
     }
 
+    // Added method for basic plan using file export API instead of docsDownload.
+    public DbxDownloader<ExportResult> getBasicExporter(final String path) throws DbxException {
+        return basicClient.files().export(path, "markdown");
+    }
+
+    // Added method for basic plan (when memberId is null) using basicClient
+    public DbxDownloader<PaperDocExportResult> getBasicPaperDownloader(final String docId) throws DbxException {
+        return basicClient.paper().docsDownload(docId, ExportFormat.MARKDOWN);
+    }
+
     public TeamMemberInfo getAdmin() throws DbxException {
         return getAdmin(teamClient.team().membersList().getMembers());
     }
@@ -245,5 +258,4 @@ public class DropboxClient {
         }
         throw new DataStoreException("Admin is not found");
     }
-
 }

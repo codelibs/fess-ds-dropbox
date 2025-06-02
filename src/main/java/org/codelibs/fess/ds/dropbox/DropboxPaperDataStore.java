@@ -31,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.dropbox.core.v2.files.ExportResult;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -139,7 +140,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Config config, final DropboxClient client, final String path) {
         if (logger.isDebugEnabled()) {
-            logger.debug("Crawling files.");
+            logger.debug("Crawling files: {}", path);
         }
 
         try {
@@ -270,12 +271,16 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             logger.info("Crawling URL: {}", url);
 
             paperMap.put(PAPER_URL, url);
-            paperMap.put(PAPER_TITLE, metadata.getName());
-            // cannot download Paper Documents as Markdown on Dropbox because the API does not support yet.
-            paperMap.put(PAPER_CONTENTS, metadata.getName());
-
             // TODO permissions
             // final List<String> permissions = getFilePermissions(client, metadata);
+            // Handle basic paper export
+            final DbxDownloader<ExportResult> downloader = client.getBasicExporter(metadata.getPathDisplay());
+            final ExportResult exported = downloader.getResult();
+            // Retain the original file name as title
+            paperMap.put(PAPER_TITLE, metadata.getName());
+            final String mimeType = "text/markdown";
+            paperMap.put(PAPER_CONTENTS, getPaperContents(downloader.getInputStream(), mimeType, url, config.ignoreError));
+
             final List<String> permissions = new ArrayList<>(roles);
             final PermissionHelper permissionHelper = ComponentUtil.getPermissionHelper();
             StreamUtil.split(paramMap.getAsString(DEFAULT_PERMISSIONS, StringUtil.EMPTY), ",")
