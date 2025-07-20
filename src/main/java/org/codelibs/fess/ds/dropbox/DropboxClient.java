@@ -52,23 +52,42 @@ import com.dropbox.core.v2.team.TeamFolderListResult;
 import com.dropbox.core.v2.team.TeamFolderMetadata;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 
+/**
+ * This class provides a client for accessing Dropbox APIs.
+ * It supports both individual and team accounts.
+ */
 public class DropboxClient {
 
     private static final Logger logger = LogManager.getLogger(DropboxClient.class);
 
+    /** Key for the App Key parameter. */
     protected static final String APP_KEY = "app_key";
+    /** Key for the App Secret parameter. */
     protected static final String APP_SECRET = "app_secret";
+    /** Key for the Access Token parameter. */
     protected static final String ACCESS_TOKEN = "access_token";
 
+    /** Key for the maximum cached content size parameter. */
     protected static final String MAX_CACHED_CONTENT_SIZE = "max_cached_content_size";
 
+    /** Dropbox request configuration. */
     protected DbxRequestConfig config;
+    /** Dropbox client for basic accounts. */
     protected DbxClientV2 basicClient;
+    /** Dropbox client for team accounts. */
     protected DbxTeamClientV2 teamClient;
+    /** DataStore parameters. */
     protected DataStoreParams params;
 
+    /** Maximum size of content to be cached in memory. */
     protected int maxCachedContentSize = 1024 * 1024;
 
+    /**
+     * Constructs a new DropboxClient with the given DataStore parameters.
+     *
+     * @param params The DataStore parameters for configuration.
+     * @throws DataStoreException If the access token is not provided.
+     */
     public DropboxClient(final DataStoreParams params) {
         this.params = params;
 
@@ -87,14 +106,35 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Retrieves all members of the team and processes them with the given consumer.
+     *
+     * @param consumer A consumer to process each team member.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getMembers(final Consumer<TeamMemberInfo> consumer) throws DbxException {
         teamClient.team().membersList().getMembers().forEach(consumer);
     }
 
+    /**
+     * Retrieves a list of all members in the team.
+     *
+     * @return A list of team members.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public List<TeamMemberInfo> getMembers() throws DbxException {
         return teamClient.team().membersList().getMembers();
     }
 
+    /**
+     * Retrieves files and folders for a specific team member and processes them.
+     *
+     * @param memberId The ID of the team member.
+     * @param path The path to list files from.
+     * @param crawlPapers Whether to include Paper documents.
+     * @param consumer A consumer to process each metadata entry.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getMemberFiles(final String memberId, final String path, final boolean crawlPapers, final Consumer<Metadata> consumer)
             throws DbxException {
         ListFolderResult listFolderResult = teamClient.asMember(memberId).files().listFolderBuilder(path).withRecursive(true).start();
@@ -117,6 +157,13 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Retrieves Paper document IDs for a specific team member.
+     *
+     * @param memberId The ID of the team member.
+     * @param consumer A consumer to process each Paper document ID.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getMemberPaperIds(final String memberId, final Consumer<String> consumer) throws DbxException {
         ListPaperDocsResponse listPaperDocsResponse = teamClient.asMember(memberId).paper().docsListBuilder().start();
         while (true) {
@@ -128,6 +175,12 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Retrieves all team folders and processes them.
+     *
+     * @param consumer A consumer to process each team folder metadata.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getTeamFolders(final Consumer<TeamFolderMetadata> consumer) throws DbxException {
         TeamFolderListResult teamFolderListResult = teamClient.team().teamFolderList();
         while (true) {
@@ -139,10 +192,28 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Retrieves files from a team folder.
+     *
+     * @param adminId The ID of the administrator.
+     * @param teamFolderId The ID of the team folder.
+     * @param consumer A consumer to process each metadata entry.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getTeamFiles(final String adminId, final String teamFolderId, final Consumer<Metadata> consumer) throws DbxException {
         getTeamFiles(adminId, teamFolderId, "", true, consumer);
     }
 
+    /**
+     * Retrieves files from a team folder with more options.
+     *
+     * @param adminId The ID of the administrator.
+     * @param teamFolderId The ID of the team folder.
+     * @param path The path within the team folder.
+     * @param recursive Whether to list files recursively.
+     * @param consumer A consumer to process each metadata entry.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void getTeamFiles(final String adminId, final String teamFolderId, final String path, final boolean recursive,
             final Consumer<Metadata> consumer) throws DbxException {
         final DbxClientV2 clientV2 = teamClient.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId));
@@ -157,6 +228,14 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Lists files and folders in a given path for a basic account.
+     *
+     * @param path The path to list.
+     * @param crawlPapers Whether to include Paper documents.
+     * @param consumer A consumer to process each metadata entry.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public void listFiles(final String path, final boolean crawlPapers, final Consumer<Metadata> consumer) throws DbxException {
         ListFolderResult listFolderResult = basicClient.files().listFolder(path);
         while (true) {
@@ -180,6 +259,13 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Gets an input stream for a file.
+     *
+     * @param file The file metadata.
+     * @return An input stream for the file content.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public InputStream getFileInputStream(final FileMetadata file) throws DbxException {
         try (final ByteArrayOutputStream dfos = new ByteArrayOutputStream()) {
             basicClient.files().downloadBuilder(file.getPathLower()).download(dfos);
@@ -203,6 +289,14 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Gets an input stream for a file of a specific team member.
+     *
+     * @param memberId The ID of the team member.
+     * @param file The file metadata.
+     * @return An input stream for the file content.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public InputStream getMemberFileInputStream(final String memberId, final FileMetadata file) throws DbxException {
         try (final DeferredFileOutputStream dfos =
                 new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out", SystemUtils.getJavaIoTmpDir())) {
@@ -217,6 +311,15 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Gets an input stream for a file in a team folder.
+     *
+     * @param adminId The ID of the administrator.
+     * @param teamFolderId The ID of the team folder.
+     * @param file The file metadata.
+     * @return An input stream for the file content.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public InputStream getTeamFileInputStream(final String adminId, final String teamFolderId, final FileMetadata file)
             throws DbxException {
         try (final DeferredFileOutputStream dfos =
@@ -233,24 +336,57 @@ public class DropboxClient {
         }
     }
 
+    /**
+     * Gets a downloader for a Paper document.
+     *
+     * @param memberId The ID of the team member.
+     * @param docId The ID of the Paper document.
+     * @return A downloader for the Paper document.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public DbxDownloader<PaperDocExportResult> getPaperDownloader(final String memberId, final String docId) throws DbxException {
         return teamClient.asMember(memberId).paper().docsDownload(docId, ExportFormat.MARKDOWN);
     }
 
-    // Added method for basic plan using file export API instead of docsDownload.
+    /**
+     * Gets an exporter for a file for basic plan.
+     *
+     * @param path The path of the file.
+     * @return An exporter for the file.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public DbxDownloader<ExportResult> getBasicExporter(final String path) throws DbxException {
         return basicClient.files().export(path, "markdown");
     }
 
-    // Added method for basic plan (when memberId is null) using basicClient
+    /**
+     * Gets a downloader for a Paper document for basic plan.
+     *
+     * @param docId The ID of the Paper document.
+     * @return A downloader for the Paper document.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public DbxDownloader<PaperDocExportResult> getBasicPaperDownloader(final String docId) throws DbxException {
         return basicClient.paper().docsDownload(docId, ExportFormat.MARKDOWN);
     }
 
+    /**
+     * Gets the administrator of the team.
+     *
+     * @return The team member info of the administrator.
+     * @throws DbxException If an error occurs while accessing the Dropbox API.
+     */
     public TeamMemberInfo getAdmin() throws DbxException {
         return getAdmin(teamClient.team().membersList().getMembers());
     }
 
+    /**
+     * Finds the administrator from a list of team members.
+     *
+     * @param members The list of team members.
+     * @return The team member info of the administrator.
+     * @throws DataStoreException If no administrator is found.
+     */
     public TeamMemberInfo getAdmin(final List<TeamMemberInfo> members) {
         for (final TeamMemberInfo member : members) {
             if (member.getRole() == AdminTier.TEAM_ADMIN) {

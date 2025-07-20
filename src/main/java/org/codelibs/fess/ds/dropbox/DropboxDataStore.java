@@ -63,60 +63,121 @@ import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 
+/**
+ * DataStore for Dropbox.
+ * It crawls files and folders from Dropbox and indexes them.
+ * This class supports both individual and team accounts.
+ *
+ * The following parameters are available:
+ * <ul>
+ * <li>basic_plan: Set to "true" for individual accounts, "false" for team accounts. Default is "false".</li>
+ * <li>fields: Fields to be indexed.</li>
+ * <li>max_size: Maximum size of files to be indexed. Default is 10MB.</li>
+ * <li>ignore_folder: Set to "true" to ignore folders. Default is "true".</li>
+ * <li>ignore_error: Set to "true" to ignore errors during crawling. Default is "true".</li>
+ * <li>supported_mimetypes: Comma-separated list of supported MIME types. Default is ".*".</li>
+ * <li>include_pattern: URL patterns to include for crawling.</li>
+ * <li>exclude_pattern: URL patterns to exclude from crawling.</li>
+ * <li>default_permissions: Default permissions for the indexed documents.</li>
+ * <li>number_of_threads: Number of threads to use for crawling. Default is 1.</li>
+ * </ul>
+ */
 public class DropboxDataStore extends AbstractDataStore {
 
     private static final Logger logger = LogManager.getLogger(DropboxDataStore.class);
 
+    /** Default maximum file size to be indexed (10MB). */
     protected static final long DEFAULT_MAX_SIZE = 10000000L; // 10m
 
     // parameters
+    /** Parameter key for the basic plan flag. */
     protected static final String BASIC_PLAN = "basic_plan";
+    /** Parameter key for the fields to be indexed. */
     protected static final String FIELDS = "fields";
+    /** Parameter key for the maximum file size. */
     protected static final String MAX_SIZE = "max_size";
+    /** Parameter key for ignoring folders. */
     protected static final String IGNORE_FOLDER = "ignore_folder";
+    /** Parameter key for ignoring errors. */
     protected static final String IGNORE_ERROR = "ignore_error";
+    /** Parameter key for supported MIME types. */
     protected static final String SUPPORTED_MIMETYPES = "supported_mimetypes";
+    /** Parameter key for include patterns. */
     protected static final String INCLUDE_PATTERN = "include_pattern";
+    /** Parameter key for exclude patterns. */
     protected static final String EXCLUDE_PATTERN = "exclude_pattern";
+    /** Parameter key for default permissions. */
     protected static final String DEFAULT_PERMISSIONS = "default_permissions";
+    /** Parameter key for the number of threads. */
     protected static final String NUMBER_OF_THREADS = "number_of_threads";
 
     // scripts
+    /** Script key for file data. */
     protected static final String FILE = "file";
 
     // - common
+    /** Field key for the file URL. */
     protected static final String FILE_URL = "url";
+    /** Field key for the file roles. */
     protected static final String FILE_ROLES = "roles";
 
+    /** Field key for the file name. */
     protected static final String FILE_NAME = "name";
+    /** Field key for the lower-cased file path. */
     protected static final String FILE_PATH_LOWER = "path_lower";
+    /** Field key for the display file path. */
     protected static final String FILE_PATH_DISPLAY = "path_display";
+    /** Field key for the parent shared folder ID. */
     protected static final String FILE_PARENT_SHARED_FOLDER_ID = "parent_shared_folder_id";
 
+    /** Field key for the file ID. */
     protected static final String FILE_ID = "id";
+    /** Field key for property groups. */
     protected static final String FILE_PROPERTY_GROUPS = "property_groups";
+    /** Field key for sharing information. */
     protected static final String FILE_SHARING_INFO = "sharing_info";
 
     // - file
+    /** Field key for file content. */
     protected static final String FILE_CONTENTS = "contents";
+    /** Field key for the file MIME type. */
     protected static final String FILE_MIMETYPE = "mimetype";
+    /** Field key for the file type. */
     protected static final String FILE_FILETYPE = "filetype";
 
+    /** Field key for the client-modified timestamp. */
     protected static final String FILE_CLIENT_MODIFIED = "client_modified";
+    /** Field key for the content hash. */
     protected static final String FILE_CONTENT_HASH = "content_hash";
+    /** Field key for export information. */
     protected static final String FILE_EXPORT_INFO = "export_info";
+    /** Field key for whether the file has explicit shared members. */
     protected static final String FILE_HAS_EXPLICT_SHARED_MEMBERS = "has_explict_shared_members";
+    /** Field key for media information. */
     protected static final String FILE_MEDIA_INFO = "media_info";
+    /** Field key for the file revision. */
     protected static final String FILE_REV = "rev";
+    /** Field key for the server-modified timestamp. */
     protected static final String FILE_SERVER_MODIFIED = "server_modified";
+    /** Field key for the file size. */
     protected static final String FILE_SIZE = "size";
+    /** Field key for symlink information. */
     protected static final String FILE_SYMLINK_INFO = "symlink_info";
 
     // - folder
+    /** Field key for the shared folder ID. */
     protected static final String FILE_SHARED_FOLDER_ID = "shared_folder_id";
 
     // other
+    /** The name of the extractor to be used for content extraction. */
     protected String extractorName = "tikaExtractor";
+
+    /**
+     * Default constructor.
+     */
+    public DropboxDataStore() {
+        super();
+    }
 
     @Override
     protected String getName() {
@@ -153,6 +214,19 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Crawls files for a basic (individual) account.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param executorService The executor service.
+     * @param client The Dropbox client.
+     * @param path The path to crawl.
+     */
     protected void crawlBasicFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client, final String path) {
@@ -179,6 +253,19 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Crawls files for each member of a team account.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param executorService The executor service.
+     * @param client The Dropbox client.
+     * @param members The list of team members.
+     */
     protected void crawlMemberFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client, final List<TeamMemberInfo> members) {
@@ -199,6 +286,19 @@ public class DropboxDataStore extends AbstractDataStore {
         });
     }
 
+    /**
+     * Crawls files in team folders.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param executorService The executor service.
+     * @param client The Dropbox client.
+     * @param members The list of team members.
+     */
     protected void crawlTeamFiles(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config,
             final ExecutorService executorService, final DropboxClient client, final List<TeamMemberInfo> members) {
@@ -237,6 +337,23 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Stores a single file or folder in the index.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param client The Dropbox client.
+     * @param memberId The ID of the team member (if applicable).
+     * @param adminId The ID of the administrator (if applicable).
+     * @param teamFolderId The ID of the team folder (if applicable).
+     * @param path The path of the file or folder.
+     * @param metadata The metadata of the file or folder.
+     * @param roles The roles associated with the file or folder.
+     */
     protected void storeFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
@@ -398,10 +515,24 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Generates a URL for a given path.
+     *
+     * @param path The path of the file or folder.
+     * @return The generated URL.
+     * @throws URISyntaxException If the URL syntax is invalid.
+     */
     protected String getUrl(final String path) throws URISyntaxException {
         return new URIBuilder().setScheme("https").setHost("www.dropbox.com").setPath("/home" + path).build().toASCIIString();
     }
 
+    /**
+     * Guesses the MIME type of a file.
+     *
+     * @param in The input stream of the file.
+     * @param file The file metadata.
+     * @return The guessed MIME type.
+     */
     protected String getFileMimeType(final InputStream in, final FileMetadata file) {
         try {
             final String mimeType = URLConnection.guessContentTypeFromStream(in);
@@ -415,6 +546,16 @@ public class DropboxDataStore extends AbstractDataStore {
         return (mimeType != null) ? mimeType : "application/octet-stream";
     }
 
+    /**
+     * Extracts the content of a file.
+     *
+     * @param in The input stream of the file.
+     * @param file The file metadata.
+     * @param mimeType The MIME type of the file.
+     * @param url The URL of the file.
+     * @param ignoreError Whether to ignore errors during content extraction.
+     * @return The extracted content.
+     */
     protected String getFileContents(final InputStream in, final FileMetadata file, final String mimeType, final String url,
             final boolean ignoreError) {
         try {
@@ -433,14 +574,29 @@ public class DropboxDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Gets the role of a team member.
+     *
+     * @param member The team member information.
+     * @return The role of the team member.
+     */
     protected String getMemberRole(final TeamMemberInfo member) {
         return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
     }
 
+    /**
+     * Creates a new Dropbox client.
+     *
+     * @param paramMap The DataStore parameters.
+     * @return A new Dropbox client.
+     */
     protected DropboxClient createClient(final DataStoreParams paramMap) {
         return new DropboxClient(paramMap);
     }
 
+    /**
+     * Configuration class for the DropboxDataStore.
+     */
     protected static class Config {
         final String[] fields;
         final long maxSize;
@@ -448,6 +604,11 @@ public class DropboxDataStore extends AbstractDataStore {
         final String[] supportedMimeTypes;
         final UrlFilter urlFilter;
 
+        /**
+         * Constructs a new Config object from the given DataStore parameters.
+         *
+         * @param paramMap The DataStore parameters.
+         */
         Config(final DataStoreParams paramMap) {
             fields = getFields(paramMap);
             maxSize = getMaxSize(paramMap);
