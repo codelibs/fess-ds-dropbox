@@ -59,26 +59,55 @@ import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.paper.PaperDocExportResult;
 import com.dropbox.core.v2.team.TeamMemberInfo;
 
+/**
+ * DataStore for Dropbox Paper.
+ * It crawls Dropbox Paper documents and indexes them.
+ * This class supports both individual and team accounts.
+ *
+ * The following parameters are available:
+ * <ul>
+ * <li>basic_plan: Set to "true" for individual accounts, "false" for team accounts. Default is "false".</li>
+ * <li>number_of_threads: Number of threads to use for crawling. Default is 1.</li>
+ * </ul>
+ */
 public class DropboxPaperDataStore extends AbstractDataStore {
 
     private static final Logger logger = LogManager.getLogger(DropboxPaperDataStore.class);
 
     // parameters
+    /** Parameter key for the basic plan flag. */
     protected static final String BASIC_PLAN = "basic_plan";
 
     // scripts
+    /** Script key for Paper data. */
     protected static final String PAPER = "paper";
+    /** Field key for the Paper URL. */
     protected static final String PAPER_URL = "url";
+    /** Field key for the Paper title. */
     protected static final String PAPER_TITLE = "title";
+    /** Field key for the Paper contents. */
     protected static final String PAPER_CONTENTS = "contents";
+    /** Field key for the Paper owner. */
     protected static final String PAPER_OWNER = "owner";
+    /** Field key for the Paper MIME type. */
     protected static final String PAPER_MIMETYPE = "mimetype";
+    /** Field key for the Paper file type. */
     protected static final String PAPER_FILETYPE = "filetype";
+    /** Field key for the Paper revision. */
     protected static final String PAPER_REVISION = "revision";
+    /** Field key for the Paper roles. */
     protected static final String PAPER_ROLES = "roles";
 
     // other
+    /** The name of the extractor to be used for content extraction. */
     protected String extractorName = "tikaExtractor";
+
+    /**
+     * Default constructor.
+     */
+    public DropboxPaperDataStore() {
+        super();
+    }
 
     @Override
     protected String getName() {
@@ -110,6 +139,18 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Crawls Paper documents for each member of a team account.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param config The configuration object.
+     * @param client The Dropbox client.
+     */
     protected void crawlMemberPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Config config, final DropboxClient client) {
@@ -136,6 +177,19 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Crawls Paper documents for a basic (individual) account.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param executorService The executor service.
+     * @param config The configuration object.
+     * @param client The Dropbox client.
+     * @param path The path to crawl.
+     */
     protected void crawlBasicPapers(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final ExecutorService executorService,
             final Config config, final DropboxClient client, final String path) {
@@ -162,6 +216,20 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Stores a single Paper document in the index.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param client The Dropbox client.
+     * @param memberId The ID of the team member (if applicable).
+     * @param docId The ID of the Paper document.
+     * @param roles The roles associated with the document.
+     */
     protected void storePaper(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String docId, final List<String> roles) {
@@ -249,6 +317,23 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Stores a single Paper file in the index.
+     *
+     * @param dataConfig The data configuration.
+     * @param callback The callback for index updates.
+     * @param paramMap The DataStore parameters.
+     * @param scriptMap The script map.
+     * @param defaultDataMap The default data map.
+     * @param config The configuration object.
+     * @param client The Dropbox client.
+     * @param memberId The ID of the team member (if applicable).
+     * @param adminId The ID of the administrator (if applicable).
+     * @param teamFolderId The ID of the team folder (if applicable).
+     * @param path The path of the Paper file.
+     * @param metadata The metadata of the Paper file.
+     * @param roles The roles associated with the file.
+     */
     protected void storePaperFile(final DataConfig dataConfig, final IndexUpdateCallback callback, final DataStoreParams paramMap,
             final Map<String, String> scriptMap, final Map<String, Object> defaultDataMap, final Config config, final DropboxClient client,
             final String memberId, final String adminId, final String teamFolderId, final String path, final Metadata metadata,
@@ -333,14 +418,37 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Generates a URL for a Paper document from its ID.
+     *
+     * @param docId The ID of the Paper document.
+     * @return The generated URL.
+     * @throws URISyntaxException If the URL syntax is invalid.
+     */
     protected String getUrlFromId(final String docId) throws URISyntaxException {
         return new URIBuilder().setScheme("https").setHost("paper.dropbox.com").setPath("/doc/" + docId).build().toASCIIString();
     }
 
+    /**
+     * Generates a URL for a Paper document from its path.
+     *
+     * @param path The path of the Paper document.
+     * @return The generated URL.
+     * @throws URISyntaxException If the URL syntax is invalid.
+     */
     protected String getUrlFromPath(final String path) throws URISyntaxException {
         return new URIBuilder().setScheme("https").setHost("www.dropbox.com").setPath("/home" + path).build().toASCIIString();
     }
 
+    /**
+     * Extracts the content of a Paper document.
+     *
+     * @param in The input stream of the document.
+     * @param mimeType The MIME type of the document.
+     * @param url The URL of the document.
+     * @param ignoreError Whether to ignore errors during content extraction.
+     * @return The extracted content.
+     */
     protected String getPaperContents(final InputStream in, final String mimeType, final String url, final boolean ignoreError) {
         try {
             return ComponentUtil.getExtractorFactory().builder(in, null).mimeType(mimeType).extractorName(extractorName).extract()
@@ -358,10 +466,22 @@ public class DropboxPaperDataStore extends AbstractDataStore {
         }
     }
 
+    /**
+     * Gets the role of a team member.
+     *
+     * @param member The team member information.
+     * @return The role of the team member.
+     */
     protected String getMemberRole(final TeamMemberInfo member) {
         return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
     }
 
+    /**
+     * Creates a new Dropbox client.
+     *
+     * @param paramMap The DataStore parameters.
+     * @return A new Dropbox client.
+     */
     protected DropboxClient createClient(final DataStoreParams paramMap) {
         return new DropboxClient(paramMap);
     }
