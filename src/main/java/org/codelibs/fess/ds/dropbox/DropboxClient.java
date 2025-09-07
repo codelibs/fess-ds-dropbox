@@ -324,7 +324,10 @@ public class DropboxClient {
             throws DbxException {
         try (final DeferredFileOutputStream dfos =
                 new DeferredFileOutputStream(maxCachedContentSize, "crawler-DropboxClient-", ".out", SystemUtils.getJavaIoTmpDir())) {
-            teamClient.asAdmin(adminId).withPathRoot(PathRoot.namespaceId(teamFolderId)).files().download(file.getPathDisplay())
+            teamClient.asAdmin(adminId)
+                    .withPathRoot(PathRoot.namespaceId(teamFolderId))
+                    .files()
+                    .download(file.getPathDisplay())
                     .download(dfos);
             dfos.flush();
             if (dfos.isInMemory()) {

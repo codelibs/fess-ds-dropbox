@@ -559,7 +559,11 @@ public class DropboxDataStore extends AbstractDataStore {
     protected String getFileContents(final InputStream in, final FileMetadata file, final String mimeType, final String url,
             final boolean ignoreError) {
         try {
-            return ComponentUtil.getExtractorFactory().builder(in, null).mimeType(mimeType).extractorName(extractorName).extract()
+            return ComponentUtil.getExtractorFactory()
+                    .builder(in, null)
+                    .mimeType(mimeType)
+                    .extractorName(extractorName)
+                    .extract()
                     .getContent();
         } catch (final Exception e) {
             if (!ignoreError && !ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
