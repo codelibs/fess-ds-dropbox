@@ -451,7 +451,11 @@ public class DropboxPaperDataStore extends AbstractDataStore {
      */
     protected String getPaperContents(final InputStream in, final String mimeType, final String url, final boolean ignoreError) {
         try {
-            return ComponentUtil.getExtractorFactory().builder(in, null).mimeType(mimeType).extractorName(extractorName).extract()
+            return ComponentUtil.getExtractorFactory()
+                    .builder(in, null)
+                    .mimeType(mimeType)
+                    .extractorName(extractorName)
+                    .extract()
                     .getContent();
         } catch (final Exception e) {
             if (!ignoreError && !ComponentUtil.getFessConfig().isCrawlerIgnoreContentException()) {
