@@ -59,7 +59,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
     }
 
     public void test_getUrl_withSpecialCharacters() throws Exception {
-        assertEquals("https://www.dropbox.com/home/test%20%26%20file.pdf", dataStore.getUrl("/test & file.pdf"));
+        assertEquals("https://www.dropbox.com/home/test%20&%20file.pdf", dataStore.getUrl("/test & file.pdf"));
     }
 
     public void test_getUrl_withJapanese() throws Exception {
@@ -75,7 +75,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
 
     public void test_getFileMimeType_fromName() throws Exception {
         java.util.Date now = new java.util.Date();
-        FileMetadata file = FileMetadata.newBuilder("test.txt", "id-1", now, now, "rev1", 100L).build();
+        FileMetadata file = FileMetadata.newBuilder("test.txt", "id-1", now, now, "rev123456789", 100L).build();
         InputStream in = new ByteArrayInputStream(new byte[0]);
         String mimeType = dataStore.getFileMimeType(in, file);
         assertEquals("text/plain", mimeType);
@@ -83,7 +83,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
 
     public void test_getFileMimeType_pdf() throws Exception {
         java.util.Date now = new java.util.Date();
-        FileMetadata file = FileMetadata.newBuilder("document.pdf", "id-2", now, now, "rev1", 100L).build();
+        FileMetadata file = FileMetadata.newBuilder("document.pdf", "id-2", now, now, "rev123456789", 100L).build();
         InputStream in = new ByteArrayInputStream(new byte[0]);
         String mimeType = dataStore.getFileMimeType(in, file);
         assertEquals("application/pdf", mimeType);
@@ -91,7 +91,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
 
     public void test_getFileMimeType_unknown() throws Exception {
         java.util.Date now = new java.util.Date();
-        FileMetadata file = FileMetadata.newBuilder("file.unknown", "id-3", now, now, "rev1", 100L).build();
+        FileMetadata file = FileMetadata.newBuilder("file.unknown", "id-3", now, now, "rev123456789", 100L).build();
         InputStream in = new ByteArrayInputStream(new byte[0]);
         String mimeType = dataStore.getFileMimeType(in, file);
         assertEquals("application/octet-stream", mimeType);
@@ -99,7 +99,7 @@ public class DropboxDataStoreTest extends LastaFluteTestCase {
 
     public void test_getFileMimeType_fromStream() throws Exception {
         java.util.Date now = new java.util.Date();
-        FileMetadata file = FileMetadata.newBuilder("test", "id-4", now, now, "rev1", 100L).build();
+        FileMetadata file = FileMetadata.newBuilder("test", "id-4", now, now, "rev123456789", 100L).build();
         // GIF header
         byte[] gifHeader = new byte[] { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 };
         InputStream in = new ByteArrayInputStream(gifHeader);

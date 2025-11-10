@@ -95,7 +95,7 @@ public class DropboxPaperDataStoreTest extends LastaFluteTestCase {
         String path = "/test & document.paper";
         String url = dataStore.getUrlFromPath(path);
         assertTrue(url.startsWith("https://www.dropbox.com/home/"));
-        assertTrue(url.contains("%20%26%20"));
+        assertTrue(url.contains("%20&%20"));
     }
 
     public void test_getUrlFromPath_withJapanese() throws Exception {
