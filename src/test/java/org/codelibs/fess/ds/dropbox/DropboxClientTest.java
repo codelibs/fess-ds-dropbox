@@ -104,14 +104,14 @@ public class DropboxClientTest extends LastaFluteTestCase {
 
         List<TeamMemberInfo> members = new ArrayList<>();
         // Create member without admin role
-        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("member1", "user@example.com", false,
-                Name.newBuilder("User", "One").setDisplayName("User One").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.MEMBER_ONLY).build());
+        Name name1 = new Name("User", "One", "User One", "User One", "UO");
+        TeamMemberProfile profile1 = new TeamMemberProfile("member1", "user@example.com", false, name1, null, null, null);
+        members.add(new TeamMemberInfo(profile1, AdminTier.MEMBER_ONLY));
 
         // Create admin member
-        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("admin1", "admin@example.com", false,
-                Name.newBuilder("Admin", "User").setDisplayName("Admin User").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.TEAM_ADMIN).build());
+        Name name2 = new Name("Admin", "User", "Admin User", "Admin User", "AU");
+        TeamMemberProfile profile2 = new TeamMemberProfile("admin1", "admin@example.com", false, name2, null, null, null);
+        members.add(new TeamMemberInfo(profile2, AdminTier.TEAM_ADMIN));
 
         TeamMemberInfo admin = client.getAdmin(members);
         assertNotNull(admin);
@@ -126,13 +126,13 @@ public class DropboxClientTest extends LastaFluteTestCase {
 
         List<TeamMemberInfo> members = new ArrayList<>();
         // Create only non-admin members
-        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("member1", "user1@example.com", false,
-                Name.newBuilder("User", "One").setDisplayName("User One").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.MEMBER_ONLY).build());
+        Name name1 = new Name("User", "One", "User One", "User One", "UO");
+        TeamMemberProfile profile1 = new TeamMemberProfile("member1", "user1@example.com", false, name1, null, null, null);
+        members.add(new TeamMemberInfo(profile1, AdminTier.MEMBER_ONLY));
 
-        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("member2", "user2@example.com", false,
-                Name.newBuilder("User", "Two").setDisplayName("User Two").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.MEMBER_ONLY).build());
+        Name name2 = new Name("User", "Two", "User Two", "User Two", "UT");
+        TeamMemberProfile profile2 = new TeamMemberProfile("member2", "user2@example.com", false, name2, null, null, null);
+        members.add(new TeamMemberInfo(profile2, AdminTier.MEMBER_ONLY));
 
         try {
             client.getAdmin(members);
@@ -163,14 +163,14 @@ public class DropboxClientTest extends LastaFluteTestCase {
 
         List<TeamMemberInfo> members = new ArrayList<>();
         // Create first admin
-        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("admin1", "admin1@example.com", false,
-                Name.newBuilder("Admin", "One").setDisplayName("Admin One").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.TEAM_ADMIN).build());
+        Name name1 = new Name("Admin", "One", "Admin One", "Admin One", "AO");
+        TeamMemberProfile profile1 = new TeamMemberProfile("admin1", "admin1@example.com", false, name1, null, null, null);
+        members.add(new TeamMemberInfo(profile1, AdminTier.TEAM_ADMIN));
 
         // Create second admin
-        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("admin2", "admin2@example.com", false,
-                Name.newBuilder("Admin", "Two").setDisplayName("Admin Two").build(), null, null, null).build();
-        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.TEAM_ADMIN).build());
+        Name name2 = new Name("Admin", "Two", "Admin Two", "Admin Two", "AT");
+        TeamMemberProfile profile2 = new TeamMemberProfile("admin2", "admin2@example.com", false, name2, null, null, null);
+        members.add(new TeamMemberInfo(profile2, AdminTier.TEAM_ADMIN));
 
         // Should return the first admin found
         TeamMemberInfo admin = client.getAdmin(members);
