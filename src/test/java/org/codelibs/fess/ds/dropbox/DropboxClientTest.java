@@ -15,18 +15,19 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.commons.io.IOUtils;
 import org.codelibs.fess.entity.DataStoreParams;
+import org.codelibs.fess.exception.DataStoreException;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
-import com.dropbox.core.DbxException;
-import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.team.AdminTier;
+import com.dropbox.core.v2.team.TeamMemberInfo;
+import com.dropbox.core.v2.team.TeamMemberProfile;
+import com.dropbox.core.v2.users.Name;
 
 public class DropboxClientTest extends LastaFluteTestCase {
-
-    private static final String ACCESS_TOKEN = "";
 
     @Override
     protected String prepareConfigFile() {
@@ -48,23 +49,166 @@ public class DropboxClientTest extends LastaFluteTestCase {
         super.tearDown();
     }
 
-    public void test() throws Exception {
-        // getMembers();
-        // getMemberFiles();
-        // getTeamFiles();
-        // getMemberPaperIds();
-        // getFileInputStream();
-        // getTeamFileInputStream();
+    public void test_constructor_withValidAccessToken() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token_123");
+        final DropboxClient client = new DropboxClient(params);
+        assertNotNull(client);
+        assertNotNull(client.config);
+        assertNotNull(client.basicClient);
+        assertNotNull(client.teamClient);
     }
 
-    private void getMembers() throws DbxException {
+    public void test_constructor_withoutAccessToken() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        try {
+            new DropboxClient(params);
+            fail("Should throw DataStoreException when access_token is missing");
+        } catch (DataStoreException e) {
+            assertTrue(e.getMessage().contains("access_token"));
+            assertTrue(e.getMessage().contains("required"));
+        }
+    }
+
+    public void test_constructor_withEmptyAccessToken() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "");
+        try {
+            new DropboxClient(params);
+            fail("Should throw DataStoreException when access_token is empty");
+        } catch (DataStoreException e) {
+            assertTrue(e.getMessage().contains("access_token"));
+        }
+    }
+
+    public void test_constructor_withMaxCachedContentSize() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        params.put(DropboxClient.MAX_CACHED_CONTENT_SIZE, "2097152");
+        final DropboxClient client = new DropboxClient(params);
+        assertNotNull(client);
+        assertEquals(2097152, client.maxCachedContentSize);
+    }
+
+    public void test_constructor_defaultMaxCachedContentSize() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        final DropboxClient client = new DropboxClient(params);
+        assertEquals(1024 * 1024, client.maxCachedContentSize);
+    }
+
+    public void test_getAdmin_findAdmin() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        final DropboxClient client = new DropboxClient(params);
+
+        List<TeamMemberInfo> members = new ArrayList<>();
+        // Create member without admin role
+        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("member1", "user@example.com", false,
+                Name.newBuilder("User", "One").setDisplayName("User One").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.MEMBER_ONLY).build());
+
+        // Create admin member
+        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("admin1", "admin@example.com", false,
+                Name.newBuilder("Admin", "User").setDisplayName("Admin User").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.TEAM_ADMIN).build());
+
+        TeamMemberInfo admin = client.getAdmin(members);
+        assertNotNull(admin);
+        assertEquals(AdminTier.TEAM_ADMIN, admin.getRole());
+        assertEquals("admin1", admin.getProfile().getTeamMemberId());
+    }
+
+    public void test_getAdmin_noAdmin() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        final DropboxClient client = new DropboxClient(params);
+
+        List<TeamMemberInfo> members = new ArrayList<>();
+        // Create only non-admin members
+        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("member1", "user1@example.com", false,
+                Name.newBuilder("User", "One").setDisplayName("User One").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.MEMBER_ONLY).build());
+
+        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("member2", "user2@example.com", false,
+                Name.newBuilder("User", "Two").setDisplayName("User Two").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.MEMBER_ONLY).build());
+
+        try {
+            client.getAdmin(members);
+            fail("Should throw DataStoreException when no admin is found");
+        } catch (DataStoreException e) {
+            assertTrue(e.getMessage().contains("Admin is not found"));
+        }
+    }
+
+    public void test_getAdmin_emptyList() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        final DropboxClient client = new DropboxClient(params);
+
+        List<TeamMemberInfo> members = new ArrayList<>();
+        try {
+            client.getAdmin(members);
+            fail("Should throw DataStoreException when member list is empty");
+        } catch (DataStoreException e) {
+            assertTrue(e.getMessage().contains("Admin is not found"));
+        }
+    }
+
+    public void test_getAdmin_multipleAdmins() throws Exception {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        final DropboxClient client = new DropboxClient(params);
+
+        List<TeamMemberInfo> members = new ArrayList<>();
+        // Create first admin
+        TeamMemberProfile profile1 = TeamMemberProfile.newBuilder("admin1", "admin1@example.com", false,
+                Name.newBuilder("Admin", "One").setDisplayName("Admin One").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile1, AdminTier.TEAM_ADMIN).build());
+
+        // Create second admin
+        TeamMemberProfile profile2 = TeamMemberProfile.newBuilder("admin2", "admin2@example.com", false,
+                Name.newBuilder("Admin", "Two").setDisplayName("Admin Two").build(), null, null, null).build();
+        members.add(TeamMemberInfo.newBuilder(profile2, AdminTier.TEAM_ADMIN).build());
+
+        // Should return the first admin found
+        TeamMemberInfo admin = client.getAdmin(members);
+        assertNotNull(admin);
+        assertEquals(AdminTier.TEAM_ADMIN, admin.getRole());
+        assertEquals("admin1", admin.getProfile().getTeamMemberId());
+    }
+
+    public void test_params_appKey() throws Exception {
+        assertEquals("app_key", DropboxClient.APP_KEY);
+    }
+
+    public void test_params_appSecret() throws Exception {
+        assertEquals("app_secret", DropboxClient.APP_SECRET);
+    }
+
+    public void test_params_accessToken() throws Exception {
+        assertEquals("access_token", DropboxClient.ACCESS_TOKEN);
+    }
+
+    public void test_params_maxCachedContentSize() throws Exception {
+        assertEquals("max_cached_content_size", DropboxClient.MAX_CACHED_CONTENT_SIZE);
+    }
+
+    /*
+     * Note: The following methods require actual Dropbox API access and are commented out
+     * for unit testing. They can be used for manual integration testing with a valid access token.
+     *
+    private static final String ACCESS_TOKEN = "YOUR_ACCESS_TOKEN_HERE";
+
+    private void integrationTest_getMembers() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
         client.getMembers(info -> System.out.println(info.getProfile().getName().getDisplayName()));
     }
 
-    private void getMemberFiles() throws DbxException {
+    private void integrationTest_getMemberFiles() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
@@ -79,7 +223,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         });
     }
 
-    private void getTeamFiles() throws DbxException {
+    private void integrationTest_getTeamFiles() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
@@ -93,7 +237,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         });
     }
 
-    private void getMemberPaperIds() throws DbxException {
+    private void integrationTest_getMemberPaperIds() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
@@ -107,7 +251,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         });
     }
 
-    private void getFileInputStream() throws DbxException {
+    private void integrationTest_getFileInputStream() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
@@ -135,7 +279,7 @@ public class DropboxClientTest extends LastaFluteTestCase {
         });
     }
 
-    private void getTeamFileInputStream() throws DbxException {
+    private void integrationTest_getTeamFileInputStream() throws DbxException {
         final DataStoreParams params = new DataStoreParams();
         params.put(DropboxClient.ACCESS_TOKEN, ACCESS_TOKEN);
         final DropboxClient client = new DropboxClient(params);
@@ -163,5 +307,6 @@ public class DropboxClientTest extends LastaFluteTestCase {
             }
         });
     }
+    */
 
 }
