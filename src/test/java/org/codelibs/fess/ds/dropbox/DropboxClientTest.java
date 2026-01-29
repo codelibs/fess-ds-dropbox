@@ -15,12 +15,14 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import org.junit.jupiter.api.TestInfo;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.exception.DataStoreException;
-import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
+import org.codelibs.fess.ds.dropbox.UnitDsTestCase;
 
 import com.dropbox.core.v2.team.AdminTier;
 import com.dropbox.core.v2.team.TeamMemberInfo;
@@ -29,7 +31,7 @@ import com.dropbox.core.v2.team.TeamMemberStatus;
 import com.dropbox.core.v2.team.TeamMembershipType;
 import com.dropbox.core.v2.users.Name;
 
-public class DropboxClientTest extends LastaFluteTestCase {
+public class DropboxClientTest extends UnitDsTestCase {
 
     @Override
     protected String prepareConfigFile() {
@@ -42,13 +44,13 @@ public class DropboxClientTest extends LastaFluteTestCase {
     }
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void setUp(TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
     }
 
     @Override
-    public void tearDown() throws Exception {
-        super.tearDown();
+    public void tearDown(TestInfo testInfo) throws Exception {
+        super.tearDown(testInfo);
     }
 
     public void test_constructor_withValidAccessToken() throws Exception {

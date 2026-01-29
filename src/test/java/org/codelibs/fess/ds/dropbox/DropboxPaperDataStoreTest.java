@@ -15,10 +15,12 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
-import org.codelibs.fess.util.ComponentUtil;
-import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
+import org.junit.jupiter.api.TestInfo;
 
-public class DropboxPaperDataStoreTest extends LastaFluteTestCase {
+import org.codelibs.fess.util.ComponentUtil;
+import org.codelibs.fess.ds.dropbox.UnitDsTestCase;
+
+public class DropboxPaperDataStoreTest extends UnitDsTestCase {
     public DropboxPaperDataStore dataStore;
 
     @Override
@@ -32,15 +34,15 @@ public class DropboxPaperDataStoreTest extends LastaFluteTestCase {
     }
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void setUp(TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
         dataStore = new DropboxPaperDataStore();
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void tearDown(TestInfo testInfo) throws Exception {
         ComponentUtil.setFessConfig(null);
-        super.tearDown();
+        super.tearDown(testInfo);
     }
 
     public void test_getName() throws Exception {
