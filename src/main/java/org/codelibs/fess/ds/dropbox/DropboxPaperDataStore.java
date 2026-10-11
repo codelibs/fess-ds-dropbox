@@ -50,8 +50,11 @@ import org.codelibs.fess.helper.PermissionHelper;
 import org.codelibs.fess.opensearch.config.exentity.DataConfig;
 import org.codelibs.fess.util.ComponentUtil;
 
+import com.dropbox.core.BadResponseCodeException;
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
+import com.dropbox.core.InvalidAccessTokenException;
+import com.dropbox.core.NetworkIOException;
 import com.dropbox.core.v2.files.ExportResult;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
@@ -131,6 +134,9 @@ public class DropboxPaperDataStore extends AbstractDataStore {
             } else {
                 crawlMemberPapers(dataConfig, callback, paramMap, scriptMap, defaultDataMap, executorService, config, client);
             }
+            // awaitTermination() only returns early once the executor has been shut down; without
+            // this it always waits out the full timeout, even when nothing was submitted.
+            executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final InterruptedException e) {
             throw new DataStoreException("Interrupted.", e);
@@ -169,11 +175,11 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                                     defaultDataMap, config, client, memberId, null, null,
                                     "/" + member.getProfile().getName().getDisplayName() + metadata.getPathDisplay(), metadata, roles)));
                 } catch (final DbxException e) {
-                    logger.debug("Failed to crawl member papers: {}", memberId, e);
+                    logger.warn("Failed to crawl member papers. memberId={}, cause={}", memberId, describe(e), e);
                 }
             });
         } catch (final DbxException e) {
-            logger.debug("Failed to crawl member papers.", e);
+            throw new DataStoreException("Failed to get team members. cause=" + describe(e), e);
         }
     }
 
@@ -212,7 +218,7 @@ public class DropboxPaperDataStore extends AbstractDataStore {
                 }
             });
         } catch (DbxException e) {
-            logger.warn("Failed to list files. path={}", path, e);
+            logger.warn("Failed to list files. path={}, cause={}", path, describe(e), e);
         }
     }
 
@@ -478,6 +484,25 @@ public class DropboxPaperDataStore extends AbstractDataStore {
      */
     protected String getMemberRole(final TeamMemberInfo member) {
         return ComponentUtil.getSystemHelper().getSearchRoleByUser(member.getProfile().getEmail());
+    }
+
+    /**
+     * Describes a Dropbox API failure for logging: the exception type and, when available,
+     * the HTTP status or the underlying I/O error. The access token is never included.
+     *
+     * @param e The Dropbox exception.
+     * @return A short description of the failure.
+     */
+    protected String describe(final DbxException e) {
+        final StringBuilder buf = new StringBuilder(e.getClass().getSimpleName());
+        if (e instanceof final BadResponseCodeException ex) {
+            buf.append(" (HTTP ").append(ex.getStatusCode()).append(')');
+        } else if (e instanceof InvalidAccessTokenException) {
+            buf.append(" (HTTP 401)");
+        } else if (e instanceof NetworkIOException && e.getCause() != null) {
+            buf.append(" (").append(e.getCause().getClass().getSimpleName()).append(')');
+        }
+        return buf.toString();
     }
 
     /**
