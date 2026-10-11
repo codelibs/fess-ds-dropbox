@@ -27,6 +27,8 @@ basic_plan=false
 |----------------| --- |
 | *access_token* | An access token of Dropbox (Generated on [App Console](https://www.dropbox.com/developers/apps)) |
 | *basic_plan*   | This parameter is set to `true` if the target for crawling is under the Basic plan. The default value is `false`. |
+| *proxy_host*   | The host name of an HTTP proxy to connect to Dropbox through. When it is not set, Dropbox is accessed directly (the JVM proxy properties are not used). Optional. |
+| *proxy_port*   | The port of the HTTP proxy. Required when *proxy_host* is set. |
 
 ### Scripts (Dropbox)
 

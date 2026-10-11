@@ -19,6 +19,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Consumer;
@@ -36,6 +38,7 @@ import org.codelibs.fess.exception.DataStoreException;
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
+import com.dropbox.core.http.StandardHttpRequestor;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.DbxTeamClientV2;
 import com.dropbox.core.v2.common.PathRoot;
@@ -67,6 +70,11 @@ public class DropboxClient {
     /** Key for the Access Token parameter. */
     protected static final String ACCESS_TOKEN = "access_token";
 
+    /** Key for the proxy host parameter. */
+    protected static final String PROXY_HOST = "proxy_host";
+    /** Key for the proxy port parameter. */
+    protected static final String PROXY_PORT = "proxy_port";
+
     /** Key for the maximum cached content size parameter. */
     protected static final String MAX_CACHED_CONTENT_SIZE = "max_cached_content_size";
 
@@ -96,7 +104,7 @@ public class DropboxClient {
             throw new DataStoreException("Parameter '" + ACCESS_TOKEN + "' is required");
         }
 
-        this.config = new DbxRequestConfig("fess");
+        this.config = createRequestConfig(params);
         this.basicClient = new DbxClientV2(config, accessToken);
         this.teamClient = new DbxTeamClientV2(config, accessToken);
 
@@ -104,6 +112,38 @@ public class DropboxClient {
         if (StringUtil.isNotBlank(size)) {
             maxCachedContentSize = Integer.parseInt(size);
         }
+    }
+
+    /**
+     * Creates the request configuration. The SDK's default requestor always connects directly
+     * (it is built with {@code Proxy.NO_PROXY} and ignores the JVM proxy properties), so a proxy
+     * given by the {@code proxy_host} and {@code proxy_port} parameters is passed to it explicitly.
+     *
+     * @param params The DataStore parameters.
+     * @return The request configuration.
+     * @throws DataStoreException If {@code proxy_host} is set but {@code proxy_port} is missing or invalid.
+     */
+    protected static DbxRequestConfig createRequestConfig(final DataStoreParams params) {
+        final String proxyHost = params.getAsString(PROXY_HOST, StringUtil.EMPTY);
+        if (StringUtil.isBlank(proxyHost)) {
+            return new DbxRequestConfig("fess");
+        }
+        final String proxyPort = params.getAsString(PROXY_PORT, StringUtil.EMPTY);
+        if (StringUtil.isBlank(proxyPort)) {
+            throw new DataStoreException("Parameter '" + PROXY_PORT + "' is required when '" + PROXY_HOST + "' is set");
+        }
+        final int port;
+        try {
+            port = Integer.parseInt(proxyPort.trim());
+        } catch (final NumberFormatException e) {
+            throw new DataStoreException("Parameter '" + PROXY_PORT + "' is invalid: " + proxyPort, e);
+        }
+        if (logger.isDebugEnabled()) {
+            logger.debug("proxy: {}:{}", proxyHost, port);
+        }
+        final Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost.trim(), port));
+        return new DbxRequestConfig("fess", null,
+                new StandardHttpRequestor(StandardHttpRequestor.Config.builder().withProxy(proxy).build()));
     }
 
     /**
