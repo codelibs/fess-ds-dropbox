@@ -15,10 +15,22 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import java.io.IOException;
+import java.util.function.Consumer;
+
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 
+import org.codelibs.fess.entity.DataStoreParams;
+import org.codelibs.fess.exception.DataStoreException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.ds.dropbox.UnitDsTestCase;
+
+import com.dropbox.core.BadResponseCodeException;
+import com.dropbox.core.DbxException;
+import com.dropbox.core.NetworkIOException;
+import com.dropbox.core.v2.files.Metadata;
+import com.dropbox.core.v2.team.TeamMemberInfo;
 
 public class DropboxPaperDataStoreTest extends UnitDsTestCase {
     public DropboxPaperDataStore dataStore;
@@ -131,6 +143,92 @@ public class DropboxPaperDataStoreTest extends UnitDsTestCase {
     public void test_extractorName_canBeModified() throws Exception {
         dataStore.extractorName = "customExtractor";
         assertEquals("customExtractor", dataStore.extractorName);
+    }
+
+    /** Client double that never touches the network. */
+    private static class StubClient extends DropboxClient {
+        private final DbxException failure;
+
+        StubClient(final DataStoreParams params, final DbxException failure) {
+            super(params);
+            this.failure = failure;
+        }
+
+        @Override
+        public void getMembers(final Consumer<TeamMemberInfo> consumer) throws DbxException {
+            if (failure != null) {
+                throw failure;
+            }
+        }
+
+        @Override
+        public void listFiles(final String path, final boolean crawlPapers, final Consumer<Metadata> consumer) throws DbxException {
+            if (failure != null) {
+                throw failure;
+            }
+        }
+    }
+
+    private DropboxPaperDataStore newDataStore(final DbxException failure) {
+        return new DropboxPaperDataStore() {
+            @Override
+            protected DropboxClient createClient(final DataStoreParams paramMap) {
+                return new StubClient(paramMap, failure);
+            }
+        };
+    }
+
+    private DataStoreParams newParams(final boolean basicPlan) {
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "secret-token-value");
+        params.put(DropboxPaperDataStore.BASIC_PLAN, String.valueOf(basicPlan));
+        return params;
+    }
+
+    private long storeDataMillis(final DropboxPaperDataStore store, final DataStoreParams params) {
+        final long start = System.nanoTime();
+        store.storeData(null, null, params, new java.util.HashMap<>(), new java.util.HashMap<>());
+        return (System.nanoTime() - start) / 1_000_000L;
+    }
+
+    @Test
+    public void test_storeData_teamPlan_noPapers_returnsWithoutWaiting() throws Exception {
+        final long elapsed = storeDataMillis(newDataStore(null), newParams(false));
+        assertTrue("elapsed=" + elapsed + "ms", elapsed < 20_000L);
+    }
+
+    @Test
+    public void test_storeData_basicPlan_noPapers_returnsWithoutWaiting() throws Exception {
+        final long elapsed = storeDataMillis(newDataStore(null), newParams(true));
+        assertTrue("elapsed=" + elapsed + "ms", elapsed < 20_000L);
+    }
+
+    @Test
+    public void test_storeData_teamPlan_membersFailure_isReported() throws Exception {
+        final DbxException failure = new NetworkIOException(new IOException("unreachable"));
+        try {
+            newDataStore(failure).storeData(null, null, newParams(false), new java.util.HashMap<>(), new java.util.HashMap<>());
+            fail("A failure to list team members must not be swallowed");
+        } catch (final DataStoreException e) {
+            assertSame(failure, e.getCause());
+            assertTrue(e.getMessage(), e.getMessage().contains("NetworkIOException"));
+            assertTrue(e.getMessage(), e.getMessage().contains("IOException"));
+            assertFalse(e.getMessage(), e.getMessage().contains("secret-token-value"));
+        }
+    }
+
+    @Test
+    public void test_storeData_basicPlan_listFailure_doesNotThrow() throws Exception {
+        final long elapsed = storeDataMillis(newDataStore(new BadResponseCodeException("req", "Bad", 503)), newParams(true));
+        assertTrue("elapsed=" + elapsed + "ms", elapsed < 20_000L);
+    }
+
+    @Test
+    public void test_describe() throws Exception {
+        assertEquals("BadResponseCodeException (HTTP 503)", dataStore.describe(new BadResponseCodeException("req", "Bad", 503)));
+        assertEquals("NetworkIOException (UnknownHostException)",
+                dataStore.describe(new NetworkIOException(new java.net.UnknownHostException("api.dropboxapi.com"))));
+        assertEquals("DbxException", dataStore.describe(new DbxException("x")));
     }
 
 }
