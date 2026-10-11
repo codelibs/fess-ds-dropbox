@@ -204,6 +204,9 @@ public class DropboxDataStore extends AbstractDataStore {
                 crawlMemberFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
                 crawlTeamFiles(dataConfig, callback, paramMap, scriptMap, defaultDataMap, config, executorService, client, members);
             }
+            // awaitTermination() only returns early once the executor has been shut down; without
+            // this it always waits out the full timeout, even when nothing was submitted.
+            executorService.shutdown();
             executorService.awaitTermination(60, TimeUnit.SECONDS);
         } catch (final DbxException e) {
             throw new DataStoreException("Dropbox exception occurs.", e);
