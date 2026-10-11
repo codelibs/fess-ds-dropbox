@@ -15,17 +15,21 @@
  */
 package org.codelibs.fess.ds.dropbox;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
 
 import org.codelibs.fess.entity.DataStoreParams;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.ds.dropbox.UnitDsTestCase;
 
+import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.files.Metadata;
 
 public class DropboxDataStoreTest extends UnitDsTestCase {
     public DropboxDataStore dataStore;
@@ -181,6 +185,36 @@ public class DropboxDataStoreTest extends UnitDsTestCase {
         assertNotNull(str);
         assertTrue(str.contains("maxSize=5000000"));
         assertTrue(str.contains("ignoreFolder=false"));
+    }
+
+    /** Client double that lists nothing and never touches the network. */
+    private static class EmptyClient extends DropboxClient {
+        EmptyClient(final DataStoreParams params) {
+            super(params);
+        }
+
+        @Override
+        public void listFiles(final String path, final boolean crawlPapers, final Consumer<Metadata> consumer) throws DbxException {
+            // nothing to crawl
+        }
+    }
+
+    @Test
+    public void test_storeData_basicPlan_nothingToCrawl_returnsWithoutWaiting() throws Exception {
+        final DropboxDataStore store = new DropboxDataStore() {
+            @Override
+            protected DropboxClient createClient(final DataStoreParams paramMap) {
+                return new EmptyClient(paramMap);
+            }
+        };
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxClient.ACCESS_TOKEN, "test_token");
+        params.put(DropboxDataStore.BASIC_PLAN, "true");
+
+        final long start = System.nanoTime();
+        store.storeData(null, null, params, new java.util.HashMap<>(), new java.util.HashMap<>());
+        final long elapsed = (System.nanoTime() - start) / 1_000_000L;
+        assertTrue("elapsed=" + elapsed + "ms", elapsed < 20_000L);
     }
 
 }
