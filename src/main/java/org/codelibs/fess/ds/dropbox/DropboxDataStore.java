@@ -364,7 +364,10 @@ public class DropboxDataStore extends AbstractDataStore {
         final CrawlerStatsHelper crawlerStatsHelper = ComponentUtil.getCrawlerStatsHelper();
         final Map<String, Object> dataMap = new HashMap<>(defaultDataMap);
         final StatsKeyObject statsKey = new StatsKeyObject(path);
-        paramMap.put(Constants.CRAWLER_STATS_KEY, statsKey);
+        // The stats key identifies this one document, and paramMap is shared by every worker thread,
+        // so it goes on a per-document copy instead of on paramMap itself.
+        final DataStoreParams localParams = paramMap.newInstance();
+        localParams.put(Constants.CRAWLER_STATS_KEY, statsKey);
         try {
             crawlerStatsHelper.begin(statsKey);
             final String url = getUrl(path);
@@ -484,7 +487,7 @@ public class DropboxDataStore extends AbstractDataStore {
                 statsKey.setUrl(statsUrl);
             }
 
-            callback.store(paramMap, dataMap);
+            callback.store(localParams, dataMap);
             crawlerStatsHelper.record(statsKey, StatsAction.FINISHED);
         } catch (final CrawlingAccessException e) {
             logger.warn("Crawling Access Exception at : {}", dataMap, e);

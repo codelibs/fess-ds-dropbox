@@ -21,14 +21,28 @@ import org.junit.jupiter.api.TestInfo;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
+import org.codelibs.fess.Constants;
+import org.codelibs.fess.app.service.FailureUrlService;
+import org.codelibs.fess.ds.callback.IndexUpdateCallback;
 import org.codelibs.fess.entity.DataStoreParams;
+import org.codelibs.fess.helper.CrawlerStatsHelper;
+import org.codelibs.fess.helper.CrawlerStatsHelper.StatsKeyObject;
+import org.codelibs.fess.helper.PermissionHelper;
+import org.codelibs.fess.helper.SystemHelper;
+import org.codelibs.fess.opensearch.config.exentity.CrawlingConfig;
+import org.codelibs.fess.opensearch.config.exentity.FailureUrl;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.ds.dropbox.UnitDsTestCase;
 
 import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.files.FileMetadata;
+import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.Metadata;
 
 public class DropboxDataStoreTest extends UnitDsTestCase {
@@ -215,6 +229,71 @@ public class DropboxDataStoreTest extends UnitDsTestCase {
         store.storeData(null, null, params, new java.util.HashMap<>(), new java.util.HashMap<>());
         final long elapsed = (System.nanoTime() - start) / 1_000_000L;
         assertTrue("elapsed=" + elapsed + "ms", elapsed < 20_000L);
+    }
+
+    /**
+     * {@link Constants#CRAWLER_STATS_KEY} identifies one document, so it must reach
+     * {@code callback.store} on a per-document copy and never be written to the
+     * {@link DataStoreParams} instance that every worker thread shares.
+     */
+    @Test
+    public void test_storeFile_statsKeyIsOnPerDocumentCopy() throws Exception {
+        final CrawlerStatsHelper crawlerStatsHelper = new CrawlerStatsHelper();
+        crawlerStatsHelper.init();
+        ComponentUtil.register(crawlerStatsHelper, "crawlerStatsHelper");
+        ComponentUtil.register(new SystemHelper(), "systemHelper");
+        ComponentUtil.register(new PermissionHelper(), "permissionHelper");
+        ComponentUtil.register(new FailureUrlService() {
+            @Override
+            public FailureUrl store(final CrawlingConfig crawlingConfig, final String errorName, final String url, final Throwable e) {
+                throw new AssertionError("unexpected failure: " + errorName, e);
+            }
+        }, FailureUrlService.class.getCanonicalName());
+
+        final DataStoreParams params = new DataStoreParams();
+        params.put(DropboxDataStore.IGNORE_FOLDER, "false");
+        params.put("custom", "value");
+
+        final List<DataStoreParams> stored = new ArrayList<>();
+        final IndexUpdateCallback callback = new IndexUpdateCallback() {
+            @Override
+            public void store(final DataStoreParams paramMap, final Map<String, Object> dataMap) {
+                stored.add(paramMap);
+            }
+
+            @Override
+            public long getDocumentSize() {
+                return 0;
+            }
+
+            @Override
+            public long getExecuteTime() {
+                return 0;
+            }
+
+            @Override
+            public void commit() {
+            }
+        };
+
+        final DropboxDataStore store = new DropboxDataStore();
+        final DropboxDataStore.Config config = new DropboxDataStore.Config(params);
+        for (final String path : new String[] { "/first", "/second" }) {
+            store.storeFile(null, callback, params, new HashMap<>(), new HashMap<>(), config, null, null, null, null, path,
+                    FolderMetadata.newBuilder(path.substring(1), "id:" + path).withPathLower(path).withPathDisplay(path).build(),
+                    new ArrayList<>());
+        }
+
+        assertEquals(2, stored.size());
+        assertNull("shared params must not carry the stats key", params.get(Constants.CRAWLER_STATS_KEY));
+        assertNotSame(stored.get(0), stored.get(1));
+        for (int i = 0; i < 2; i++) {
+            final DataStoreParams localParams = stored.get(i);
+            assertNotSame(params, localParams);
+            assertEquals("value", localParams.getAsString("custom"));
+            assertTrue(localParams.get(Constants.CRAWLER_STATS_KEY) instanceof StatsKeyObject);
+        }
+        assertNotSame(stored.get(0).get(Constants.CRAWLER_STATS_KEY), stored.get(1).get(Constants.CRAWLER_STATS_KEY));
     }
 
 }
